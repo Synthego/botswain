@@ -33,6 +33,11 @@ class QueryLog(models.Model):
     # Caching
     cache_hit = models.BooleanField(default=False)
 
+    # Token tracking (nullable for backwards compatibility with ClaudeCLIProvider)
+    input_tokens = models.IntegerField(null=True, blank=True, help_text="Number of input tokens used")
+    output_tokens = models.IntegerField(null=True, blank=True, help_text="Number of output tokens used")
+    total_tokens = models.IntegerField(null=True, blank=True, help_text="Total tokens (input + output)")
+
     class Meta:
         ordering = ['-executed_at']
         indexes = [
