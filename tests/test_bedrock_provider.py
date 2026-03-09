@@ -38,12 +38,10 @@ def test_parse_intent_returns_token_counts():
 
         result = provider.parse_intent("test", {"entities": {}})
 
-        assert "input_tokens" in result
-        assert "output_tokens" in result
-        assert "total_tokens" in result
-        assert result["input_tokens"] == 50
-        assert result["output_tokens"] == 30
-        assert result["total_tokens"] == 80
+        assert "_tokens" in result
+        assert result["_tokens"]["input"] == 50
+        assert result["_tokens"]["output"] == 30
+        assert result["_tokens"]["total"] == 80
 
 
 def test_format_response_returns_markdown():
@@ -79,3 +77,26 @@ def test_format_response_returns_token_counts():
 
         # format_response should return a string with the response
         assert isinstance(result, str)
+
+
+def test_constructor_parameters():
+    """Test that BedrockProvider constructor accepts and uses parameters"""
+    provider = BedrockProvider(
+        model="us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        max_intent_tokens=300,
+        max_response_tokens=800,
+        timeout=60.0
+    )
+
+    assert provider.model == "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    assert provider.max_intent_tokens == 300
+    assert provider.max_response_tokens == 800
+
+
+def test_default_constructor_parameters():
+    """Test that BedrockProvider uses correct defaults"""
+    provider = BedrockProvider()
+
+    assert provider.model == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    assert provider.max_intent_tokens == 500
+    assert provider.max_response_tokens == 1000

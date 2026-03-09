@@ -9,15 +9,24 @@ from .provider import LLMProvider
 class BedrockProvider(LLMProvider):
     """AWS Bedrock implementation using Anthropic SDK with inference profile"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        max_intent_tokens: int = 500,
+        max_response_tokens: int = 1000,
+        timeout: float = 30.0
+    ):
         """Initialize Bedrock provider with Anthropic SDK"""
-        self.client = AnthropicBedrock()
+        self.client = AnthropicBedrock(
+            timeout=timeout,
+            max_retries=2
+        )
         # Use inference profile ID (not direct model ID)
-        self.model_id = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+        self.model = model
 
         # Token limits per task
-        self.intent_max_tokens = 500
-        self.response_max_tokens = 1000
+        self.max_intent_tokens = max_intent_tokens
+        self.max_response_tokens = max_response_tokens
 
     def parse_intent(self, question: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -33,8 +42,8 @@ class BedrockProvider(LLMProvider):
         prompt = self._build_intent_prompt(question, context)
 
         response = self.client.messages.create(
-            model=self.model_id,
-            max_tokens=self.intent_max_tokens,
+            model=self.model,
+            max_tokens=self.max_intent_tokens,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -49,10 +58,12 @@ class BedrockProvider(LLMProvider):
         except json.JSONDecodeError:
             raise ValueError(f"Invalid JSON from Bedrock: {response_text}")
 
-        # Add token usage information
-        intent_data["input_tokens"] = response.usage.input_tokens
-        intent_data["output_tokens"] = response.usage.output_tokens
-        intent_data["total_tokens"] = response.usage.input_tokens + response.usage.output_tokens
+        # Add token usage information in nested structure
+        intent_data["_tokens"] = {
+            "input": response.usage.input_tokens,
+            "output": response.usage.output_tokens,
+            "total": response.usage.input_tokens + response.usage.output_tokens
+        }
 
         return intent_data
 
@@ -70,8 +81,8 @@ class BedrockProvider(LLMProvider):
         prompt = self._build_response_prompt(query_results, original_question)
 
         response = self.client.messages.create(
-            model=self.model_id,
-            max_tokens=self.response_max_tokens,
+            model=self.model,
+            max_tokens=self.max_response_tokens,
             messages=[{"role": "user", "content": prompt}]
         )
 
