@@ -36,6 +36,9 @@ class AuditLogger:
         except User.DoesNotExist:
             pass
 
+        # Extract token usage if present (remove from intent_data to avoid redundancy)
+        token_data = intent.pop('_tokens', {})
+
         # Create log entry
         log_entry = QueryLog.objects.create(
             user=user_obj,
@@ -55,7 +58,10 @@ class AuditLogger:
             interface=interface,
             success=response.get('success', True),
             error_message=response.get('error'),
-            cache_hit=cache_hit
+            cache_hit=cache_hit,
+            input_tokens=token_data.get('input'),
+            output_tokens=token_data.get('output'),
+            total_tokens=token_data.get('total')
         )
 
         return log_entry

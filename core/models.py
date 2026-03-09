@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
 class QueryLog(models.Model):
     """Audit log for all queries executed through Botswain"""
@@ -34,9 +35,9 @@ class QueryLog(models.Model):
     cache_hit = models.BooleanField(default=False)
 
     # Token tracking (nullable for backwards compatibility with ClaudeCLIProvider)
-    input_tokens = models.IntegerField(null=True, blank=True, help_text="Number of input tokens used")
-    output_tokens = models.IntegerField(null=True, blank=True, help_text="Number of output tokens used")
-    total_tokens = models.IntegerField(null=True, blank=True, help_text="Total tokens (input + output)")
+    input_tokens = models.PositiveIntegerField(null=True, blank=True, help_text="Number of input tokens used")
+    output_tokens = models.PositiveIntegerField(null=True, blank=True, help_text="Number of output tokens used")
+    total_tokens = models.PositiveIntegerField(null=True, blank=True, help_text="Total tokens (input + output)")
 
     class Meta:
         ordering = ['-executed_at']
@@ -44,6 +45,16 @@ class QueryLog(models.Model):
             models.Index(fields=['user', '-executed_at']),
             models.Index(fields=['entity', '-executed_at']),
         ]
+
+    def clean(self):
+        """Validate that total_tokens equals input_tokens + output_tokens"""
+        super().clean()
+        if all([self.input_tokens is not None, self.output_tokens is not None, self.total_tokens is not None]):
+            expected_total = self.input_tokens + self.output_tokens
+            if self.total_tokens != expected_total:
+                raise ValidationError(
+                    f"total_tokens ({self.total_tokens}) must equal input_tokens + output_tokens ({expected_total})"
+                )
 
     def __str__(self):
         return f"{self.username}: {self.question[:50]}..."
