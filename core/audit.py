@@ -1,8 +1,11 @@
 from typing import Dict, Any, Optional
+import logging
 from django.utils import timezone
 from django.contrib.auth.models import User
 from .models import QueryLog
 from .utils.cost import calculate_bedrock_cost
+
+logger = logging.getLogger(__name__)
 
 class AuditLogger:
     """Central audit logging for all queries"""
@@ -47,11 +50,16 @@ class AuditLogger:
         if token_data and token_data.get('input') and token_data.get('output'):
             # Default to Sonnet 4.5 if no model specified
             model_id = model or 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
-            estimated_cost = calculate_bedrock_cost(
-                input_tokens=token_data['input'],
-                output_tokens=token_data['output'],
-                model=model_id
-            )
+            try:
+                estimated_cost = calculate_bedrock_cost(
+                    input_tokens=token_data['input'],
+                    output_tokens=token_data['output'],
+                    model=model_id
+                )
+            except Exception as e:
+                # Log the query even if cost calculation fails
+                logger.warning(f"Cost calculation failed for model {model_id}: {e}")
+                estimated_cost = None
 
         # Create log entry
         log_entry = QueryLog.objects.create(

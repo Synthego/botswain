@@ -1,6 +1,7 @@
 """Test that AuditLogger calculates and stores cost data"""
 import pytest
 from decimal import Decimal
+from unittest.mock import patch
 from django.contrib.auth.models import User
 from core.audit import AuditLogger
 from core.models import QueryLog
@@ -155,3 +156,46 @@ def test_audit_logger_defaults_to_sonnet_when_model_not_specified():
 
     # Assert - should default to Sonnet pricing
     assert log_entry.estimated_cost_usd == Decimal('0.0105')
+
+
+@pytest.mark.django_db
+def test_audit_logger_handles_cost_calculation_error():
+    """Test that audit logging continues even if cost calculation fails"""
+    # Arrange
+    logger = AuditLogger()
+    User.objects.create_user(username='test@synthego.com', email='test@synthego.com')
+
+    intent = {
+        'entity': 'instrument',
+        '_tokens': {
+            'input': 1000,
+            'output': 500,
+            'total': 1500
+        }
+    }
+
+    response = {
+        'success': True,
+        'results': [],
+        'response': 'Test response'
+    }
+
+    # Act - Mock calculate_bedrock_cost to raise exception
+    with patch('core.audit.calculate_bedrock_cost', side_effect=ValueError("Test error")):
+        # Should not raise exception - audit log should succeed
+        log_entry = logger.log(
+            user='test@synthego.com',
+            intent=intent,
+            response=response,
+            execution_time=0.2,
+            question='Test query',
+            interface='api',
+            model='us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+        )
+
+    # Assert - Query should be logged with NULL cost
+    assert log_entry.input_tokens == 1000
+    assert log_entry.output_tokens == 500
+    assert log_entry.total_tokens == 1500
+    assert log_entry.estimated_cost_usd is None  # Cost is None due to error
+    assert log_entry.success is True  # Query itself succeeded
