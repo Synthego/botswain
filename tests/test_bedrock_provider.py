@@ -1,6 +1,7 @@
 # tests/test_bedrock_provider.py
 import pytest
 from unittest.mock import Mock, patch
+from django.conf import settings
 from core.llm.bedrock import BedrockProvider
 
 
@@ -59,8 +60,10 @@ def test_format_response_returns_markdown():
             "What instruments are available?"
         )
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, dict)
+        assert 'text' in result
+        assert isinstance(result['text'], str)
+        assert len(result['text']) > 0
 
 
 def test_format_response_returns_token_counts():
@@ -75,8 +78,13 @@ def test_format_response_returns_token_counts():
 
         result = provider.format_response({}, "test")
 
-        # format_response should return a string with the response
-        assert isinstance(result, str)
+        # format_response should return a dict with text and tokens
+        assert isinstance(result, dict)
+        assert 'text' in result
+        assert 'tokens' in result
+        assert result['tokens']['input'] == 100
+        assert result['tokens']['output'] == 50
+        assert result['tokens']['total'] == 150
 
 
 def test_constructor_parameters():
@@ -94,9 +102,10 @@ def test_constructor_parameters():
 
 
 def test_default_constructor_parameters():
-    """Test that BedrockProvider uses correct defaults"""
+    """Test that BedrockProvider uses correct defaults from settings"""
     provider = BedrockProvider()
 
-    assert provider.model == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-    assert provider.max_intent_tokens == 500
-    assert provider.max_response_tokens == 1000
+    # Should use Django settings as defaults
+    assert provider.model == settings.BEDROCK_MODEL_ID
+    assert provider.max_intent_tokens == settings.BEDROCK_MAX_INTENT_TOKENS
+    assert provider.max_response_tokens == settings.BEDROCK_MAX_RESPONSE_TOKENS

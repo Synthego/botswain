@@ -1,8 +1,9 @@
 """AWS Bedrock LLM provider implementation using anthropic[bedrock] SDK"""
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from anthropic import AnthropicBedrock
+from django.conf import settings
 from .provider import LLMProvider
 
 
@@ -11,22 +12,30 @@ class BedrockProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        max_intent_tokens: int = 500,
-        max_response_tokens: int = 1000,
-        timeout: float = 30.0
+        model: Optional[str] = None,
+        max_intent_tokens: Optional[int] = None,
+        max_response_tokens: Optional[int] = None,
+        timeout: Optional[float] = None
     ):
-        """Initialize Bedrock provider with Anthropic SDK"""
+        """
+        Initialize Bedrock provider with Anthropic SDK.
+
+        Args:
+            model: Bedrock model inference profile ID (defaults to settings.BEDROCK_MODEL_ID)
+            max_intent_tokens: Max tokens for intent parsing (defaults to settings.BEDROCK_MAX_INTENT_TOKENS)
+            max_response_tokens: Max tokens for response formatting (defaults to settings.BEDROCK_MAX_RESPONSE_TOKENS)
+            timeout: Request timeout in seconds (defaults to settings.BEDROCK_TIMEOUT)
+        """
+        # Use settings as defaults if not provided
+        self.model = model or settings.BEDROCK_MODEL_ID
+        self.max_intent_tokens = max_intent_tokens or settings.BEDROCK_MAX_INTENT_TOKENS
+        self.max_response_tokens = max_response_tokens or settings.BEDROCK_MAX_RESPONSE_TOKENS
+        timeout_value = timeout or settings.BEDROCK_TIMEOUT
+
         self.client = AnthropicBedrock(
-            timeout=timeout,
+            timeout=timeout_value,
             max_retries=2
         )
-        # Use inference profile ID (not direct model ID)
-        self.model = model
-
-        # Token limits per task
-        self.max_intent_tokens = max_intent_tokens
-        self.max_response_tokens = max_response_tokens
 
     def parse_intent(self, question: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -67,7 +76,7 @@ class BedrockProvider(LLMProvider):
 
         return intent_data
 
-    def format_response(self, query_results: Any, original_question: str) -> str:
+    def format_response(self, query_results: Any, original_question: str) -> Dict[str, Any]:
         """
         Format query results into natural language response using Bedrock.
 
@@ -76,7 +85,7 @@ class BedrockProvider(LLMProvider):
             original_question: User's original question
 
         Returns:
-            Natural language response string (markdown formatted)
+            Dict with 'text' (formatted response) and 'tokens' (usage info)
         """
         prompt = self._build_response_prompt(query_results, original_question)
 
@@ -86,8 +95,15 @@ class BedrockProvider(LLMProvider):
             messages=[{"role": "user", "content": prompt}]
         )
 
-        # Extract text from response content
-        return response.content[0].text.strip()
+        # Return both the formatted text and token usage
+        return {
+            'text': response.content[0].text.strip(),
+            'tokens': {
+                'input': response.usage.input_tokens,
+                'output': response.usage.output_tokens,
+                'total': response.usage.input_tokens + response.usage.output_tokens
+            }
+        }
 
     def _build_intent_prompt(self, question: str, context: Dict[str, Any]) -> str:
         """Build prompt for intent parsing"""

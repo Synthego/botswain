@@ -78,3 +78,16 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
 }
+
+# LLM Provider Configuration
+LLM_PROVIDER = os.environ.get('BOTSWAIN_LLM_PROVIDER', 'bedrock')
+
+# AWS Bedrock Configuration
+BEDROCK_MODEL_ID = os.environ.get(
+    'BEDROCK_MODEL_ID',
+    'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+)
+BEDROCK_MAX_INTENT_TOKENS = int(os.environ.get('BEDROCK_MAX_INTENT_TOKENS', '500'))
+BEDROCK_MAX_RESPONSE_TOKENS = int(os.environ.get('BEDROCK_MAX_RESPONSE_TOKENS', '1000'))
+BEDROCK_AWS_REGION = os.environ.get('AWS_REGION', 'us-west-2')
+BEDROCK_TIMEOUT = float(os.environ.get('BEDROCK_TIMEOUT', '30.0'))
