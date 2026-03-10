@@ -39,6 +39,15 @@ class QueryLog(models.Model):
     output_tokens = models.PositiveIntegerField(null=True, blank=True, help_text="Number of output tokens used")
     total_tokens = models.PositiveIntegerField(null=True, blank=True, help_text="Total tokens (input + output)")
 
+    # Cost tracking (calculated from token usage)
+    estimated_cost_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Estimated cost in USD based on token usage and model pricing"
+    )
+
     class Meta:
         ordering = ['-executed_at']
         indexes = [
