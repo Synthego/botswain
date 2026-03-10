@@ -1,12 +1,15 @@
+import os
 from typing import Dict, Type, List
 from .provider import LLMProvider
 from .claude_cli import ClaudeCLIProvider
+from .bedrock import BedrockProvider
 
 class LLMProviderFactory:
     """Factory for creating LLM provider instances"""
 
     _providers: Dict[str, Type[LLMProvider]] = {
         'claude_cli': ClaudeCLIProvider,
+        'bedrock': BedrockProvider,
     }
 
     @classmethod
@@ -39,3 +42,27 @@ class LLMProviderFactory:
     def register(cls, name: str, provider_class: Type[LLMProvider]):
         """Register a new provider (for extensibility)"""
         cls._providers[name] = provider_class
+
+    @classmethod
+    def get_default(cls, **kwargs) -> LLMProvider:
+        """
+        Get the default LLM provider instance.
+
+        The default provider is determined by the LLM_PROVIDER environment variable.
+        If not set, defaults to 'bedrock'.
+
+        Supported values:
+        - 'bedrock': AWS Bedrock provider (default)
+        - 'claude_cli': Claude CLI subprocess provider
+
+        Args:
+            **kwargs: Provider-specific configuration
+
+        Returns:
+            LLMProvider instance
+
+        Raises:
+            ValueError: If the provider name from env var is unknown
+        """
+        provider_name = os.environ.get('LLM_PROVIDER', 'bedrock')
+        return cls.create(provider_name, **kwargs)
