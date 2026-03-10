@@ -19,7 +19,7 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def format_response(self, query_results: Any, original_question: str) -> str:
+    def format_response(self, query_results: Any, original_question: str) -> Dict[str, Any]:
         """
         Format query results into natural language response.
 
@@ -28,6 +28,7 @@ class LLMProvider(ABC):
             original_question: User's original question
 
         Returns:
-            Natural language response string
+            Dict with 'text' (natural language response) and 'tokens' (usage info).
+            For backwards compatibility, may return a string (will be treated as text with no tokens).
         """
         pass

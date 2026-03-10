@@ -39,7 +39,11 @@ class QueryExecutor:
         queryset = entity.get_queryset(filters)
 
         # Apply limit (default 100, max 1000)
-        limit = min(intent.get('limit', 100), 1000)
+        intent_limit = intent.get('limit')
+        if intent_limit is None:
+            limit = 100
+        else:
+            limit = min(intent_limit, 1000)
 
         # Execute query
         if hasattr(queryset, '__iter__'):

@@ -25,8 +25,8 @@ class SafetyValidator:
             ValueError: If intent is unsafe
         """
         # Check limit
-        limit = intent.get('limit', 0)
-        if limit > cls.MAX_RESULTS:
+        limit = intent.get('limit')
+        if limit is not None and limit > cls.MAX_RESULTS:
             raise ValueError(
                 f"Limit {limit} exceeds maximum of {cls.MAX_RESULTS}"
             )

@@ -1,5 +1,6 @@
 import subprocess
 import json
+import re
 from typing import Dict, Any
 from .provider import LLMProvider
 
@@ -26,7 +27,9 @@ class ClaudeCLIProvider(LLMProvider):
             raise RuntimeError(f"Claude CLI failed: {result.stderr}")
 
         try:
-            return json.loads(result.stdout)
+            # Strip markdown code blocks if present
+            cleaned_output = self._strip_markdown_json(result.stdout)
+            return json.loads(cleaned_output)
         except json.JSONDecodeError:
             raise ValueError(f"Invalid JSON from Claude: {result.stdout}")
 
@@ -84,3 +87,17 @@ Query results:
 {results_json}
 
 Provide a concise, helpful natural language response."""
+
+    def _strip_markdown_json(self, text: str) -> str:
+        """Strip markdown code blocks from JSON response"""
+        # Remove ```json and ``` markers
+        text = text.strip()
+        
+        # Pattern to match markdown code blocks
+        pattern = r'^```(?:json)?\s*\n?(.*?)\n?```$'
+        match = re.search(pattern, text, re.DOTALL)
+        
+        if match:
+            return match.group(1).strip()
+        
+        return text
