@@ -1,8 +1,8 @@
 # core/management/commands/token_usage_report.py
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Sum, Count
 from django.utils import timezone
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.models import QueryLog
 
 
@@ -26,17 +26,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         queryset = QueryLog.objects.all()
 
-        # Filter by date range if provided
-        if options.get('start_date'):
-            # Parse date string and make it timezone-aware
-            start_date = datetime.strptime(options['start_date'], '%Y-%m-%d')
-            start_date = timezone.make_aware(start_date)
-            queryset = queryset.filter(executed_at__gte=start_date)
-        if options.get('end_date'):
-            # Parse date string and make it timezone-aware
-            end_date = datetime.strptime(options['end_date'], '%Y-%m-%d')
-            end_date = timezone.make_aware(end_date)
-            queryset = queryset.filter(executed_at__lte=end_date)
+        try:
+            # Filter by date range if provided
+            if options.get('start_date'):
+                # Parse date string and make it timezone-aware
+                start_date = datetime.strptime(options['start_date'], '%Y-%m-%d')
+                start_date = timezone.make_aware(start_date)
+                queryset = queryset.filter(executed_at__gte=start_date)
+            if options.get('end_date'):
+                # Parse date string and make it timezone-aware
+                # Add 1 day and use __lt to include entire end date
+                end_date = datetime.strptime(options['end_date'], '%Y-%m-%d')
+                end_date = timezone.make_aware(end_date)
+                queryset = queryset.filter(executed_at__lt=end_date + timedelta(days=1))
+        except ValueError as e:
+            raise CommandError(f"Invalid date format: {e}. Use YYYY-MM-DD format.")
 
         # Calculate aggregates
         stats = queryset.aggregate(

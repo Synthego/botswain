@@ -149,6 +149,61 @@ class TestTokenUsageReportCommand:
         assert 'Total Input Tokens: 2000' in output
         assert 'Total Output Tokens: 1000' in output
 
+    def test_token_usage_report_end_date_includes_full_day(self):
+        """Test that end_date includes all queries from that entire day"""
+        user = User.objects.create_user(username='test@synthego.com')
+
+        # Create query on end date (should be included)
+        end_date = timezone.now().replace(hour=23, minute=59, second=59)
+        end_date_query = QueryLog.objects.create(
+            user=user,
+            username='test@synthego.com',
+            question="query on end date",
+            intent={'entity': 'synthesizer'},
+            entity='synthesizer',
+            intent_type='query',
+            execution_time_ms=100,
+            interface='api',
+            success=True,
+            input_tokens=1000,
+            output_tokens=500,
+            total_tokens=1500,
+            estimated_cost_usd=Decimal('0.0105')
+        )
+        # Manually update executed_at to be late in the day
+        QueryLog.objects.filter(pk=end_date_query.pk).update(executed_at=end_date)
+
+        # Create query after end date (should be excluded)
+        future_date = timezone.now() + timedelta(days=1)
+        future_query = QueryLog.objects.create(
+            user=user,
+            username='test@synthego.com',
+            question="future query",
+            intent={'entity': 'instrument'},
+            entity='instrument',
+            intent_type='query',
+            execution_time_ms=150,
+            interface='api',
+            success=True,
+            input_tokens=2000,
+            output_tokens=1000,
+            total_tokens=3000,
+            estimated_cost_usd=Decimal('0.021')
+        )
+        QueryLog.objects.filter(pk=future_query.pk).update(executed_at=future_date)
+
+        # Run command with end_date set to today
+        end_date_str = timezone.now().strftime('%Y-%m-%d')
+        out = StringIO()
+        call_command('token_usage_report', end_date=end_date_str, stdout=out)
+
+        output = out.getvalue()
+
+        # Verify only the query on end date is counted (not the future one)
+        assert 'Total Queries: 1' in output
+        assert 'Total Input Tokens: 1000' in output
+        assert 'Total Output Tokens: 500' in output
+
     def test_token_usage_report_empty_database(self):
         """Test report when no queries exist"""
         out = StringIO()
@@ -211,3 +266,10 @@ class TestTokenUsageReportCommand:
         assert 'Total Input Tokens: 1000' in output
         assert 'Total Output Tokens: 500' in output
         assert 'Total Cost: $0.01' in output
+
+    def test_token_usage_report_invalid_date_format(self):
+        """Test that command raises error for invalid date format"""
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError, match="Invalid date format"):
+            call_command('token_usage_report', start_date='invalid-date')
