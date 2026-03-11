@@ -120,6 +120,16 @@ class QueryAPIView(APIView):
 
             registry.register(OrderEntity())
 
+        # Check if GitHub CLI is available
+        import shutil
+        has_github = shutil.which('gh') is not None
+        if has_github:
+            from core.semantic_layer.entities.github_issues import GitHubIssuesEntity
+
+            registry.register(GitHubIssuesEntity())
+
+        # Initialize LLM provider
+
         # Initialize LLM provider
         llm_provider = LLMProviderFactory.get_default()
 

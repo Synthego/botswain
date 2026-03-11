@@ -123,6 +123,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - instrument: status, factory, barcode, instrument_type, type
 - workflow: status, template, template_name, work_order_id, workflow_id, created_after, created_before
 - order: status, factory, bigcommerce_id, order_id, created_after, created_before, email
+- github_issue: state, label, assignee, author, mention, type, created_after, updated_after, search, repo
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -148,6 +149,18 @@ Filter mapping rules (CRITICAL - follow these exactly):
 5. Barcodes (for synthesizer/instrument entities):
    - Use filter "barcode" with exact value
    - Example: "synthesizer 1717" → barcode: 1717
+
+6. GitHub issues (for github_issue entity):
+   - SECURITY: Only Synthego organization repos allowed (e.g., "Synthego/barb")
+   - State: "open", "closed", or "all"
+   - Type: "pr" for pull requests only
+   - Repo: Must be "Synthego/repo-name" format
+   - Examples:
+     - "open issues" → state: "open"
+     - "closed PRs in barb repo" → state: "closed", type: "pr", repo: "Synthego/barb"
+     - "issues assigned to bob" → assignee: "bob"
+     - "issues with bug label" → label: "bug"
+   - IMPORTANT: Non-Synthego repos will be rejected
 
 Question: {question}
 
