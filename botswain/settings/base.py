@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'core',
     'api',
+    'data_sources.barb',
 ]
 
 MIDDLEWARE = [
