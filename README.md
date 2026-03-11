@@ -1,291 +1,350 @@
 # Botswain - Natural Language Factory Query Assistant
 
-Botswain is a Django-based microservice that enables natural language queries against factory systems using LLM-powered intent parsing and a semantic layer for safe query execution.
+Botswain is a Django-based microservice that enables natural language queries across multiple data sources using LLM-powered intent parsing and a semantic layer for safe query execution.
 
-## Features
+## 🌟 Features
 
-- **Natural Language Interface**: Ask questions in plain English (e.g., "What synthesizers are available?")
+- **Natural Language Interface**: Ask questions in plain English across 11+ data sources
+- **Multi-Database Support**: Query BARB (factory operations), Buckaneer (e-commerce), NetSuite, AWS infrastructure
 - **Command-Line Interface**: Interactive CLI for quick queries
-- **AWS Bedrock Integration**: Production-ready LLM integration using Claude Sonnet 4.5 via AWS Bedrock
-- **LLM Provider Abstraction**: Pluggable LLM providers (Bedrock, Claude CLI)
+- **AWS Bedrock Integration**: Production-ready LLM integration using Claude Sonnet 4.5
+- **Multi-Entity Queries**: Automatically combine data from multiple sources in a single query
 - **Cost Tracking**: Automatic token usage and cost tracking for all queries
-- **Semantic Layer**: Safe, validated queries against BARB database entities
-- **Audit Logging**: Complete audit trail of all queries with token usage metrics
+- **Semantic Layer**: Safe, validated queries with automatic intent parsing
+- **Audit Logging**: Complete audit trail with token usage metrics
 - **REST API**: HTTP endpoint for integration with other services
-- **Docker Support**: Containerized deployment with PostgreSQL and Redis
+- **Cross-System Correlation**: Link factory operations, orders, infrastructure, and code changes
 
-## Architecture
+## 📊 Supported Data Sources
+
+Botswain provides unified natural language access to 11 different data sources:
+
+| Data Source | Description | Examples |
+|-------------|-------------|----------|
+| **Synthesizers** | RNA/DNA synthesis instruments (BARB) | "Show me available synthesizers", "Which SSA is offline?" |
+| **Instruments** | All lab instruments (BARB) | "List Hamilton instruments in Fremont", "Show offline instruments" |
+| **Workflows** | Production workflows and work orders (BARB) | "Show workflows from last 30 days", "Find work order 578630" |
+| **Orders** | E-commerce orders (Buckaneer) | "Show recent orders", "Orders shipped this week" |
+| **NetSuite Orders** | NetSuite sales orders (cached in Buckaneer) | "Show unfulfilled NetSuite orders", "Orders for customer ABC Corp" |
+| **GitHub Issues** | Issues and PRs across Synthego repos | "My open issues", "Show barb PRs", "Issues assigned to dana" |
+| **Git Commits** | Commit history across repos | "My recent commits", "Commits about midscale", "Changes in barb last week" |
+| **Instrument Logs** | Lab instrument logs (ElasticSearch) | "SSA errors today", "Hamilton logs for plate ABC123", "Synthesis 578630" |
+| **Service Logs** | Application logs (CloudWatch) | "BARB errors today", "Buckaneer 500 errors", "Celery task failures" |
+| **ECS Services** | Container service status (AWS) | "Is BARB running?", "Show production services", "BARB worker status" |
+| **RDS Databases** | Database operational status (AWS) | "Is BARB database available?", "Show BARB replicas", "Database connections" |
+
+## 🏗️ Architecture
 
 ```
 User Question
     ↓
-LLM Provider (AWS Bedrock / Claude CLI)
+AWS Bedrock (Claude Sonnet 4.5)
     ↓
 Intent Parser → Structured JSON
     ↓
+Query Planner (detects multi-entity queries)
+    ↓
 Safety Validator
     ↓
-Query Executor → Entity Registry → BARB Models
+Query Executor → Entity Registry
+    ↓                    ↓
+Multi-Database Access:  External APIs:
+- BARB (factory)       - GitHub CLI (issues, commits)
+- Buckaneer (orders)   - AWS Bedrock (LLM)
+- NetSuite (cached)    - ElasticSearch (instrument logs)
+                       - CloudWatch (service logs)
+                       - AWS ECS/RDS (infrastructure)
     ↓
-Results → LLM Formatter
+LLM Response Formatter
     ↓
-Natural Language Response
-    ↓
-Audit Logger (with token usage & cost tracking)
+Natural Language Response + Audit Log
 ```
 
-## Quick Start
+### Multi-Database Architecture
+
+Botswain uses Django's multi-database routing to safely query multiple data sources:
+
+- **`default`**: Botswain's own database (SQLite/PostgreSQL) for audit logs
+- **`barb`**: BARB production read-replica (factory operations, instruments, workflows)
+- **`buckaneer`**: Buckaneer production database (e-commerce orders, NetSuite cache)
+
+All database access is **READ-ONLY** via dedicated read-only users or read replicas.
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.9+
-- Django 4.2+
-- Docker & Docker Compose (for containerized deployment)
-- AWS Account with Bedrock access (for LLM integration)
-- AWS credentials configured (via `aws configure` or environment variables)
+- AWS credentials configured (for Bedrock, CloudWatch, ECS, RDS queries)
+- VPN access (for production database and ElasticSearch queries)
+- GitHub CLI installed (for GitHub issue/commit queries)
 
-### Using Docker (Recommended)
+### Installation
 
-1. **Start services:**
+1. **Clone the repository:**
 ```bash
-docker-compose up -d
+git clone https://github.com/Synthego/botswain.git
+cd botswain
 ```
 
-2. **Run migrations:**
+2. **Create virtual environment:**
 ```bash
-docker-compose exec web python manage.py migrate
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. **Test the API:**
+3. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+4. **Configure environment variables:**
+```bash
+cp .env.example .env
+# Edit .env and add your credentials (see Configuration section)
+```
+
+5. **Run migrations:**
+```bash
+python manage.py migrate
+```
+
+6. **Start development server:**
+```bash
+python manage.py runserver --settings=botswain.settings.barb_prod_replica 8002
+```
+
+7. **Test the API:**
 ```bash
 curl -X POST http://localhost:8002/api/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What synthesizers are available?"}'
 ```
 
-### Local Development
+## ⚙️ Configuration
 
-1. **Create virtual environment:**
+### Required Environment Variables
+
+**Production Database Credentials** (see `.env.example`):
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+# BARB Production Read-Replica
+BARB_READONLY_PASSWORD=your_password_here
 
-2. **Install dependencies:**
-```bash
-pip install -r requirements.txt
-```
+# Buckaneer Production Database
+BUCKANEER_PASSWORD=your_password_here
 
-3. **Configure settings:**
-```bash
-export DJANGO_SETTINGS_MODULE=botswain.settings.local
-```
-
-4. **Run migrations:**
-```bash
-python manage.py migrate
-```
-
-5. **Start development server:**
-```bash
-python manage.py runserver 8002
-```
-
-## API Usage
-
-### POST /api/query
-
-Submit a natural language query.
-
-**Request:**
-```json
-{
-  "question": "What synthesizers are available?",
-  "format": "natural",
-  "use_cache": true
-}
-```
-
-**Response:**
-```json
-{
-  "question": "What synthesizers are available?",
-  "response": "Found 3 synthesizers online: Synth-01, Synth-02, Synth-03",
-  "intent": {
-    "entity": "synthesizer",
-    "intent_type": "query",
-    "filters": {"status": "ONLINE"}
-  },
-  "results": {
-    "success": true,
-    "entity": "synthesizer",
-    "results": [...],
-    "count": 3,
-    "execution_time_ms": 45
-  },
-  "cached": false
-}
-```
-
-## CLI Usage
-
-Botswain includes a command-line interface for interactive queries.
-
-### Basic Usage
-
-```bash
-./botswain-cli.py "What synthesizers are available?"
-```
-
-### Options
-
-```bash
-./botswain-cli.py "QUESTION" [OPTIONS]
-
-Options:
-  --format {natural,json,table}  Response format (default: natural)
-  --url URL                      API base URL (default: http://localhost:8002)
-  --no-cache                     Disable query caching
-  --raw                          Show raw JSON response
-  --debug                        Show debug information
-  -h, --help                     Show help message
-```
-
-### Examples
-
-**Basic query:**
-```bash
-./botswain-cli.py "What synthesizers are available?"
-```
-
-**JSON format:**
-```bash
-./botswain-cli.py "Show me online instruments" --format json
-```
-
-**Debug mode:**
-```bash
-./botswain-cli.py "List all synthesizers" --debug
-```
-
-**Raw JSON output:**
-```bash
-./botswain-cli.py "What synthesizers are available?" --raw
-```
-
-**Connect to remote server:**
-```bash
-./botswain-cli.py "What synthesizers are available?" --url http://production:8002
-```
-
-### Example Output
-
-```
-📊 Query Results
-============================================================
-
-Found 3 synthesizers online: Synth-01, Synth-02, Synth-03
-
-────────────────────────────────────────────────────────────
-Entity:         synthesizer
-Results Count:  3
-Execution Time: 45ms
-```
-
-**Note:** The server must be running for the CLI to work. Start it with `make run` or `make docker-up`.
-
-## Configuration
-
-Configuration is managed through Django settings modules:
-
-- `botswain.settings.base` - Shared settings
-- `botswain.settings.local` - Local development (DEBUG=True, SQLite for tests)
-- `botswain.settings.barb_local` - BARB local database connection
-- `botswain.settings.barb_prod_replica` - BARB production replica (read-only)
-- `botswain.settings.test` - Testing configuration
-
-### Core Environment Variables
-
-**Database:**
-- `DJANGO_SECRET_KEY` - Django secret key
-- `POSTGRES_DB/USER/PASSWORD/HOST/PORT` - Database configuration
-- `REDIS_URL` - Redis connection string
-
-**LLM Provider (AWS Bedrock - Default):**
-```bash
-# LLM Provider (default: bedrock)
-LLM_PROVIDER=bedrock
-
-# Bedrock Model (default: Claude Sonnet 4.5)
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
-
-# Token Limits
-BEDROCK_MAX_INTENT_TOKENS=500
-BEDROCK_MAX_RESPONSE_TOKENS=1000
-
-# AWS Configuration (uses default AWS credentials)
+# AWS Bedrock (uses AWS credentials from aws configure or env vars)
 AWS_REGION=us-west-2
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
 
-**Legacy Provider (Claude CLI):**
+**⚠️ SECURITY**: Never commit `.env` to git. It contains production credentials.
+
+### Settings Modules
+
+Choose the appropriate settings module based on your use case:
+
+| Settings Module | Use Case | Databases |
+|-----------------|----------|-----------|
+| `botswain.settings.local` | Local development/testing | SQLite only |
+| `botswain.settings.barb_local` | BARB local database | SQLite + local BARB |
+| `botswain.settings.barb_prod_replica` | **Production queries** (recommended) | SQLite + BARB replica + Buckaneer |
+| `botswain.settings.multi_source` | Multi-database development | All databases |
+
+**Recommended for production queries:**
 ```bash
-# Switch to Claude CLI provider
-LLM_PROVIDER=claude_cli
+python manage.py runserver --settings=botswain.settings.barb_prod_replica 8002
 ```
 
-### AWS Bedrock Setup
+### AWS Configuration
 
-Botswain uses AWS Bedrock by default for production-grade LLM integration.
+Botswain requires AWS credentials for:
+- **Bedrock**: LLM queries (Claude Sonnet 4.5)
+- **CloudWatch Logs**: Service log queries
+- **ECS**: Container service status
+- **RDS**: Database operational status
 
-**Prerequisites:**
-1. AWS account with Bedrock access
-2. AWS credentials configured (via `aws configure` or environment variables)
-3. Bedrock model access enabled (Claude Sonnet 4.5)
-
-**Configuration:**
-- Default model: `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (Claude Sonnet 4.5)
-- Uses inference profile IDs with `us.` prefix for cross-region availability
-- Automatic token tracking and cost estimation
-
-**Available Models:**
-- `us.anthropic.claude-sonnet-4-5-20250929-v1:0` - Claude Sonnet 4.5 (default, best quality)
-- `us.anthropic.claude-3-5-haiku-20241022-v1:0` - Claude Haiku 3.5 (faster, lower cost)
-
-### Switching LLM Providers
-
-Change the `LLM_PROVIDER` environment variable:
-
+Configure via AWS CLI or environment variables:
 ```bash
-# Use AWS Bedrock (default, recommended)
-LLM_PROVIDER=bedrock
+# Option 1: AWS CLI (recommended)
+aws configure
 
-# Use Claude CLI (legacy, requires Claude CLI installed)
-LLM_PROVIDER=claude_cli
+# Option 2: Environment variables
+export AWS_ACCESS_KEY_ID=your_access_key
+export AWS_SECRET_ACCESS_KEY=your_secret_key
+export AWS_DEFAULT_REGION=us-west-2
 ```
 
-**Note:** Bedrock is recommended for production use due to better reliability, cost tracking, and scalability.
+## 📖 Usage Examples
 
-## Testing
-
-Run the test suite:
-
-```bash
-pytest
-```
-
-Run with coverage:
+### Single-Entity Queries
 
 ```bash
-pytest --cov=core --cov=api --cov-report=html
+# Factory operations (BARB)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show me available synthesizers"}'
+
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show workflows from last 30 days"}'
+
+# E-commerce (Buckaneer)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show recent orders"}'
+
+# NetSuite (Buckaneer cache)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show unfulfilled NetSuite orders"}'
+
+# GitHub
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "My open issues"}'
+
+# Instrument logs (ElasticSearch)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "SSA errors today"}'
+
+# Service logs (CloudWatch)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "BARB errors in the last hour"}'
+
+# Infrastructure (AWS)
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Is BARB running?"}'
 ```
 
-## Cost Tracking
+### Multi-Entity Queries
 
-Botswain automatically tracks token usage and estimates costs for all queries when using AWS Bedrock.
+Botswain automatically detects when a question requires data from multiple sources and executes parallel queries with intelligent synthesis:
+
+```bash
+# Factory + E-commerce correlation
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show me offline synthesizers and recent orders"}'
+
+# NetSuite + E-commerce cross-reference
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show me NetSuite orders for EditCo"}'
+
+# Infrastructure + Logs correlation
+curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
+  -d '{"question": "Show me BARB service status and recent errors"}'
+```
+
+### CLI Usage
+
+```bash
+# Basic query
+./botswain-cli.py "What synthesizers are available?"
+
+# Multi-entity query
+./botswain-cli.py "Show me offline synthesizers and recent orders"
+
+# JSON output
+./botswain-cli.py "Show workflows from last week" --format json
+
+# Debug mode
+./botswain-cli.py "Show BARB errors today" --debug
+```
+
+## 🔍 Query Capabilities by Entity
+
+### Synthesizers (BARB)
+**Filters**: `status`, `available`, `barcode`
+```
+"Show available synthesizers"
+"Which SSA is offline?"
+"Show synthesizer 1717"
+```
+
+### Instruments (BARB)
+**Filters**: `status`, `factory`, `barcode`, `instrument_type`, `type`
+```
+"List Hamilton instruments in Fremont"
+"Show offline instruments"
+"All Tecan instruments"
+```
+
+### Workflows (BARB)
+**Filters**: `status`, `template`, `template_name`, `work_order_id`, `workflow_id`, `created_after`, `created_before`
+```
+"Show workflows from last 30 days"
+"Find work order 578630"
+"RNA synthesis workflows this week"
+```
+
+### Orders (Buckaneer)
+**Filters**: `status`, `factory`, `bigcommerce_id`, `order_id`, `created_after`, `created_before`, `email`
+```
+"Show recent orders"
+"Orders shipped this week"
+"Orders for dana@synthego.com"
+```
+
+### NetSuite Orders (Buckaneer)
+**Filters**: `order_id`, `external_id`, `internal_id`, `netsuite_id`, `status`, `customer`, `customer_name`, `since`, `until`
+```
+"Show unfulfilled NetSuite orders"
+"NetSuite orders for ABC Corp"
+"Orders invoiced in the last week"
+```
+
+### GitHub Issues
+**Filters**: `state`, `label`, `assignee`, `author`, `mention`, `type`, `created_after`, `updated_after`, `search`, `repo`
+```
+"My open issues"
+"Show barb PRs"
+"Issues assigned to dana"
+"Issues with bug label in buckaneer"
+```
+
+### Git Commits
+**Filters**: `author`, `since`, `until`, `search`, `message`, `branch`, `repo`
+```
+"My recent commits"
+"Commits about midscale"
+"Changes in barb last week"
+```
+
+### Instrument Logs (ElasticSearch)
+**Filters**: `instrument_type`, `module_name`, `synthesizer`, `instrument`, `level`, `tags`, `synthesis_id`, `workorder_id`, `plate_barcode`, `search`, `since`, `until`
+**Requires**: VPN connection
+```
+"SSA errors today"
+"Hamilton logs for plate ABC123"
+"Logs for synthesis 578630"
+"Tecan operations this week"
+```
+
+### Service Logs (CloudWatch)
+**Filters**: `service`, `environment`, `level`, `role`, `search`, `since`, `until`
+**Retention**: 30 days (prod), 14 days (stage), 7 days (qa/dev)
+```
+"BARB errors today"
+"Buckaneer 500 errors in the last hour"
+"Celery task failures this week"
+```
+
+### ECS Services (AWS)
+**Filters**: `service`, `environment`, `role`, `status`, `cluster`
+```
+"Is BARB running?"
+"Show production services"
+"What's the status of BARB workers?"
+```
+
+### RDS Databases (AWS)
+**Filters**: `database`, `service`, `environment`, `status`, `replica`, `include_metrics`
+```
+"Is BARB database available?"
+"Show all production databases"
+"Show BARB read replicas"
+```
+
+## 💰 Cost Tracking
+
+Botswain automatically tracks token usage and costs for all queries.
 
 ### Generate Cost Report
-
-View token usage and estimated costs across all queries:
 
 ```bash
 # All-time token usage report
@@ -319,207 +378,235 @@ Average per Query:
   Cost:               $0.003
 ```
 
-### Cost Tracking in QueryLog Model
-
-All token usage is stored in the `QueryLog` model:
-
-```python
-from core.models import QueryLog
-
-# Query token usage data
-recent_queries = QueryLog.objects.filter(
-    created_at__gte='2026-03-01'
-).values('input_tokens', 'output_tokens', 'estimated_cost_usd')
-
-# Calculate total costs
-from django.db.models import Sum
-total_cost = QueryLog.objects.aggregate(
-    total_cost=Sum('estimated_cost_usd')
-)
-```
-
-### Pricing (as of 2025)
-
-AWS Bedrock Claude Sonnet 4.5 pricing:
+### Pricing (Claude Sonnet 4.5 via Bedrock)
 - Input: $3.00 per million tokens
 - Output: $15.00 per million tokens
 
-**Note:** Actual costs may vary. Check AWS Bedrock pricing for current rates.
-
-## Migrating from Claude CLI to Bedrock
-
-If you were using the Claude CLI provider and want to migrate to AWS Bedrock:
-
-### Step 1: Configure AWS Credentials
-
-```bash
-# Configure AWS CLI with your credentials
-aws configure
-
-# Or set environment variables
-export AWS_ACCESS_KEY_ID=your_access_key
-export AWS_SECRET_ACCESS_KEY=your_secret_key
-export AWS_REGION=us-west-2
-```
-
-### Step 2: Update Environment Variables
-
-```bash
-# Change LLM provider to Bedrock
-export LLM_PROVIDER=bedrock
-
-# Optional: Specify model (defaults to Sonnet 4.5)
-export BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
-```
-
-### Step 3: Restart Botswain
-
-```bash
-# Using Docker
-docker-compose restart
-
-# Or using Makefile
-make run
-```
-
-### Migration Benefits
-
-- **Better Reliability**: AWS Bedrock provides production-grade uptime
-- **Cost Tracking**: Automatic token usage and cost monitoring
-- **No CLI Dependency**: No need to install or maintain Claude CLI
-- **Scalability**: AWS handles scaling automatically
-- **Consistent Performance**: Predictable response times
-
-**Note:** No code changes required - the migration is seamless. All existing queries and data are preserved.
-
-## Project Structure
+## 🗂️ Project Structure
 
 ```
 botswain/
-├── api/                    # REST API endpoints
-├── core/                   # Core business logic
-│   ├── llm/               # LLM provider abstraction
-│   ├── semantic_layer/    # Entity definitions and registry
-│   ├── models.py          # Django models (QueryLog)
-│   ├── audit.py           # Audit logging
-│   ├── query_executor.py  # Query execution engine
-│   └── safety.py          # Safety validation
-├── data_sources/          # Mock data sources
-│   └── barb/              # Mock BARB models
-├── botswain/              # Django project settings
-├── tests/                 # Test suite
-├── botswain-cli.py        # Command-line interface
-├── Dockerfile             # Docker image definition
-├── docker-compose.yml     # Multi-container setup
-├── Makefile               # Development tooling
-└── requirements.txt       # Python dependencies
+├── api/                           # REST API endpoints
+│   ├── views.py                  # QueryAPIView endpoint
+│   └── serializers.py            # Request/response serializers
+├── core/                          # Core business logic
+│   ├── llm/                      # LLM provider abstraction
+│   │   ├── bedrock.py           # AWS Bedrock provider (default)
+│   │   ├── claude_cli.py        # Claude CLI provider (legacy)
+│   │   └── factory.py           # Provider factory
+│   ├── semantic_layer/           # Entity definitions
+│   │   ├── entities/
+│   │   │   ├── synthesizer.py           # BARB synthesizers
+│   │   │   ├── instrument_barb.py       # BARB instruments
+│   │   │   ├── workflow_barb.py         # BARB workflows
+│   │   │   ├── order_buckaneer.py       # Buckaneer orders
+│   │   │   ├── netsuite_orders.py       # NetSuite orders (Buckaneer cache)
+│   │   │   ├── github_issues.py         # GitHub issues/PRs
+│   │   │   ├── git_commits.py           # Git commit history
+│   │   │   ├── instrument_logs.py       # ElasticSearch instrument logs
+│   │   │   ├── service_logs.py          # CloudWatch service logs
+│   │   │   ├── ecs_services.py          # AWS ECS services
+│   │   │   └── rds_databases.py         # AWS RDS databases
+│   │   ├── base.py              # BaseEntity abstract class
+│   │   └── registry.py          # Entity registry
+│   ├── models.py                 # Django models (QueryLog, etc.)
+│   ├── audit.py                  # Audit logging
+│   ├── query_executor.py         # Query execution engine
+│   ├── query_planner.py          # Multi-entity query orchestration
+│   ├── query_recovery.py         # Automatic query error recovery
+│   └── safety.py                 # Safety validation
+├── botswain/                      # Django project settings
+│   ├── settings/
+│   │   ├── base.py              # Shared settings
+│   │   ├── local.py             # Local development
+│   │   ├── barb_local.py        # BARB local database
+│   │   ├── barb_prod_replica.py # Production (recommended)
+│   │   └── multi_source.py      # Multi-database development
+│   ├── db_router.py             # Database routing logic
+│   └── urls.py                  # URL configuration
+├── data_sources/                  # Unmanaged BARB models
+│   └── barb/
+│       └── models.py             # Unmanaged BARB Django models
+├── tests/                         # Test suite
+├── botswain-cli.py               # Command-line interface
+├── .env.example                  # Environment variable template
+├── requirements.txt              # Python dependencies
+└── README.md                     # This file
 ```
 
-## Entities
+## 🔒 Security
 
-Currently supported entities:
+### Credential Management
 
-- **synthesizer** - RNA/DNA synthesis instruments
-  - Attributes: name, barcode, status, factory, location, instrument_type, host, port
-  - Filters: status, factory, available, barcode
+**✅ DO:**
+- Use environment variables for all credentials
+- Keep `.env` file out of git (already in `.gitignore`)
+- Use read-only database users
+- Use BARB production read-replica (not primary)
+- Rotate credentials if exposed
 
-## Security
+**❌ DON'T:**
+- Commit credentials to git
+- Share `.env` files
+- Use write-capable database users
+- Hardcode passwords in settings files
 
-- **SQL Injection Protection**: Dangerous patterns blocked (DROP, DELETE, etc.)
-- **Query Limits**: Maximum 1000 results per query
-- **Input Validation**: All inputs validated through serializers
+### Access Controls
+
+- **Database Access**: All connections are READ-ONLY
+  - BARB: Uses `readonlyuser` on read-replica
+  - Buckaneer: Uses `buckaneer` user with read-only permissions (enforced by router)
+- **SQL Injection Protection**: Dangerous patterns blocked (DROP, DELETE, INSERT, UPDATE, etc.)
+- **Query Limits**: Maximum 100-1000 results per query (configurable)
+- **Input Validation**: All inputs validated through Django serializers
 - **Audit Trail**: All queries logged with user, intent, and execution details
 
-## Troubleshooting
+### Network Requirements
 
-### AWS Bedrock Issues
+- **VPN**: Required for ElasticSearch (instrument logs) and production databases
+- **AWS**: Requires valid credentials for Bedrock, CloudWatch, ECS, RDS
+- **GitHub**: Requires GitHub CLI configured (`gh auth login`)
 
-**"Access denied" errors:**
-- Ensure AWS credentials are configured: `aws configure`
-- Verify Bedrock access in your AWS account
-- Check that model access is enabled in Bedrock console
-- Verify you're using inference profile IDs with `us.` prefix
+## 🧪 Testing
 
-**"Model not found" errors:**
-- Use inference profile IDs, not direct model IDs
-- Correct: `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- Incorrect: `anthropic.claude-sonnet-4-5-20250929-v1:0`
+Run the test suite:
 
-**High costs:**
-- Review token usage with: `python manage.py token_usage_report`
-- Consider switching to Claude Haiku 3.5 for lower costs
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=core --cov=api --cov-report=html
+
+# Run specific test file
+pytest tests/test_query_executor.py
+
+# Run with verbose output
+pytest -v
+```
+
+## 🚢 Deployment
+
+### Production Checklist
+
+- [ ] Set `DEBUG=False` in settings
+- [ ] Change `AllowAny` to `IsAuthenticated` in `api/views.py`
+- [ ] Configure `DJANGO_SECRET_KEY` environment variable
+- [ ] Set `ALLOWED_HOSTS` for your domain
+- [ ] Use PostgreSQL for default database (not SQLite)
+- [ ] Enable HTTPS and configure CSRF settings
+- [ ] Set up monitoring (Django admin, QueryLog model)
+- [ ] Configure AWS IAM roles with least privilege
+- [ ] Set up cost alerts for AWS Bedrock usage
+- [ ] Review and adjust token limits
+- [ ] Configure log retention policies
+- [ ] Set up backup strategy for audit logs
+- [ ] Document incident response procedures
+
+### Environment Variables for Production
+
+```bash
+# Django
+DEBUG=False
+DJANGO_SECRET_KEY=your-secret-key-here
+ALLOWED_HOSTS=botswain.yourdomain.com
+
+# Databases
+BARB_READONLY_PASSWORD=your-production-password
+BUCKANEER_PASSWORD=your-production-password
+
+# AWS
+AWS_REGION=us-west-2
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**"Access denied" errors for AWS:**
+- Run `aws configure` to set up credentials
+- Verify Bedrock access in AWS console
+- Check IAM permissions for CloudWatch, ECS, RDS
+- Use inference profile IDs with `us.` prefix
+
+**"Connection refused" to databases:**
+- Verify VPN connection for production databases
+- Check `.env` file has correct passwords
+- Verify database hosts are reachable
+- Check firewall rules
+
+**"No results" for queries:**
+- Check VPN connection (required for ElasticSearch, production DBs)
+- Verify AWS credentials (`aws sts get-caller-identity`)
+- Check CloudWatch Logs retention (prod: 30 days, stage: 14 days, qa/dev: 7 days)
+- Review audit logs in Django admin
+
+**GitHub queries failing:**
+- Run `gh auth login` to authenticate
+- Verify repository access permissions
+- Check GitHub CLI version: `gh --version`
+
+**High AWS costs:**
+- Run `python manage.py token_usage_report` to analyze usage
+- Consider using Claude Haiku 3.5 for simpler queries
 - Adjust `BEDROCK_MAX_INTENT_TOKENS` and `BEDROCK_MAX_RESPONSE_TOKENS`
-
-### General Issues
-
-**"QueryLog has no column 'input_tokens'" error:**
-- Run migrations: `python manage.py migrate`
-- Migrations automatically add token tracking columns
-
-**Queries failing:**
-- Check LLM provider configuration: `echo $LLM_PROVIDER`
-- Verify AWS credentials: `aws sts get-caller-identity`
-- Check Django logs for detailed error messages
-
-**Docker networking issues:**
-- Ensure services are on `synthego-local` network
-- Check `docker-compose.yml` network configuration
+- Implement caching for frequent queries
 
 ### Getting Help
 
-For additional support:
-- Check application logs: `docker-compose logs -f web`
-- Review QueryLog in Django admin: http://localhost:8002/admin
-- Contact the Data Analytics team
+- Check application logs: Django admin → Core → Query logs
+- Review audit logs for query patterns
+- Contact Data Analytics team
+- Create issue in GitHub repository
 
-## Deployment
-
-### Production Considerations
-
-1. **Change permission classes** in `api/views.py` from `AllowAny` to `IsAuthenticated`
-2. **Set DEBUG=False** in production settings
-3. **Use proper secret key** via `DJANGO_SECRET_KEY` environment variable
-4. **Configure ALLOWED_HOSTS** for your domain
-5. **Use production-grade database** (PostgreSQL)
-6. **Enable HTTPS** and configure CSRF settings
-7. **Set up monitoring** using Django admin and QueryLog model
-8. **Configure AWS Bedrock** with proper IAM roles and permissions
-9. **Set up cost alerts** for AWS Bedrock usage
-10. **Review token limits** (`BEDROCK_MAX_INTENT_TOKENS`, `BEDROCK_MAX_RESPONSE_TOKENS`)
-
-### Docker Production
-
-Update `docker-compose.yml`:
-- Use production Django settings
-- Set strong database passwords
-- Remove volume mounts for code
-- Use environment file for secrets
-- Configure reverse proxy (nginx/traefik)
-
-## Roadmap
+## 📋 Roadmap
 
 **Completed:**
 - [x] AWS Bedrock integration with Claude Sonnet 4.5
+- [x] Multi-database support (BARB, Buckaneer)
+- [x] NetSuite orders datasource
+- [x] GitHub issues and commits integration
+- [x] ElasticSearch instrument logs
+- [x] CloudWatch service logs
+- [x] AWS infrastructure queries (ECS, RDS)
+- [x] Multi-entity query orchestration
 - [x] Token usage and cost tracking
-- [x] LLM provider abstraction (Bedrock, Claude CLI)
+- [x] Automatic query recovery
+- [x] Environment variable credential management
 
 **In Progress:**
-- [ ] Add more entities (WorkOrder, Inventory, Locations)
-- [ ] Implement Redis caching for frequent queries
-- [ ] Add Slack integration
+- [ ] Redis caching for frequent queries
+- [ ] Query result pagination
+- [ ] Slack integration
 
 **Planned:**
-- [ ] Support additional LLM providers (OpenAI, Anthropic API)
-- [ ] Add query result pagination
-- [ ] Implement query history and favorites
-- [ ] Add user authentication and permissions
-- [ ] Create web-based query interface
-- [ ] Cost optimization and caching strategies
+- [ ] Web-based query interface
+- [ ] Query history and favorites
+- [ ] User authentication and RBAC
+- [ ] Custom entity creation via API
+- [ ] Real-time query subscriptions
+- [ ] Advanced analytics dashboards
+- [ ] Query performance optimization
+- [ ] Additional AWS services (Lambda, S3, etc.)
 
-## License
+## 📄 License
 
 Internal Synthego project - see company policies for usage guidelines.
 
-## Support
+## 🤝 Support
 
-For issues or questions, contact the Data Analytics team or create an issue in the project repository.
+For issues or questions:
+- **Email**: Data Analytics team
+- **GitHub Issues**: https://github.com/Synthego/botswain/issues
+- **Slack**: #data-analytics channel
+
+## 🙏 Acknowledgments
+
+Built with:
+- Django 4.2
+- AWS Bedrock (Claude Sonnet 4.5)
+- PostgreSQL
+- ElasticSearch
+- GitHub CLI
+- AWS SDK (boto3)
