@@ -8,6 +8,7 @@ SECURITY: Read-only access to Buckaneer database. Uses existing database connect
 from typing import Dict, Any, List
 import logging
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,7 @@ class NetSuiteOrderEntity(BaseEntity):
         # Execute query
         try:
             with connections['buckaneer'].cursor() as cursor:
+                SQLValidator.validate(sql)
                 cursor.execute(sql, params)
                 columns = [col[0] for col in cursor.description]
                 rows = cursor.fetchall()
