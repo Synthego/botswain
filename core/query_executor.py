@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 from .semantic_layer.registry import EntityRegistry
 from .safety import SafetyValidator
 from .cache import QueryCache
+from .pagination import PaginationMetadata
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,23 +16,27 @@ class QueryExecutor:
         self.registry = registry or EntityRegistry()
         self.use_cache = use_cache
 
-    def execute(self, intent: Dict[str, Any], user: str, bypass_cache: bool = False) -> Dict[str, Any]:
+    def execute(self, intent: Dict[str, Any], user: str,
+                offset: int = 0, limit: int = 100,
+                bypass_cache: bool = False) -> Dict[str, Any]:
         """
-        Execute query based on structured intent with Redis caching.
+        Execute query based on structured intent with pagination support.
 
         Args:
             intent: Structured intent from IntentParser
             user: Username for audit logging and cache isolation
+            offset: Number of results to skip (default 0)
+            limit: Maximum results to return (default 100)
             bypass_cache: If True, skip cache and fetch fresh data
 
         Returns:
-            Query results with metadata and optional aggregations
+            Query results with metadata and pagination
         """
-        # Check cache first (unless bypassed)
+        # Check cache first - include pagination in cache key
         if self.use_cache and not bypass_cache:
-            cached_result = QueryCache.get(intent, user)
+            cached_result = QueryCache.get(intent, user, offset, limit)
             if cached_result is not None:
-                logger.info(f"Returning cached result for {intent.get('entity')}")
+                logger.info(f"Returning cached result for {intent.get('entity')} (offset={offset}, limit={limit})")
                 return cached_result
 
         start_time = time.time()
@@ -52,12 +57,8 @@ class QueryExecutor:
         # Build queryset
         queryset = entity.get_queryset(filters)
 
-        # Apply limit (default 100, max 1000)
-        intent_limit = intent.get('limit')
-        if intent_limit is None:
-            limit = 100
-        else:
-            limit = min(intent_limit, 1000)
+        # Smart estimation: fetch limit+1 to determine has_next
+        fetch_limit = limit + 1
 
         # Execute query - always convert to dicts for JSON serialization
         if hasattr(queryset, 'values') and callable(queryset.values):
@@ -71,7 +72,8 @@ class QueryExecutor:
             # Handle wildcard or empty attributes
             if not attributes or attributes == ['*']:
                 # No specific attributes - get all fields as dicts
-                results = list(queryset.values())[:limit]
+                # Apply offset and fetch_limit
+                results = list(queryset.values()[offset:offset + fetch_limit])
             else:
                 # User requested specific attributes
                 # Filter out wildcards and map to database fields
@@ -79,10 +81,12 @@ class QueryExecutor:
                 mapped_attributes = [field_mapping.get(attr, attr) for attr in filtered_attrs]
 
                 if mapped_attributes:
-                    results = list(queryset.values(*mapped_attributes))[:limit]
+                    # Apply offset and fetch_limit
+                    results = list(queryset.values(*mapped_attributes)[offset:offset + fetch_limit])
                 else:
                     # All attributes were wildcards, get everything
-                    results = list(queryset.values())[:limit]
+                    # Apply offset and fetch_limit
+                    results = list(queryset.values()[offset:offset + fetch_limit])
 
             # Rename fields back to friendly names in results
             reverse_mapping = {v: k for k, v in field_mapping.items()}
@@ -92,19 +96,44 @@ class QueryExecutor:
             ]
         elif hasattr(queryset, '__iter__'):
             # Fallback for non-Django querysets
-            results = list(queryset)[:limit]
+            # Apply offset and fetch_limit
+            if hasattr(queryset, '__getitem__'):
+                # Sliceable iterable
+                results = list(queryset[offset:offset + fetch_limit])
+            else:
+                # Non-sliceable iterable - materialize and slice
+                all_results = list(queryset)
+                results = all_results[offset:offset + fetch_limit]
         else:
             results = []
 
+        # Determine pagination state
+        has_next = len(results) > limit
+        has_previous = offset > 0
+
+        # Trim to requested limit
+        if has_next:
+            results = results[:limit]
+
         execution_time = time.time() - start_time
 
-        # Build base response
+        # Build pagination metadata
+        pagination = PaginationMetadata.build(
+            offset=offset,
+            limit=limit,
+            has_next=has_next,
+            has_previous=has_previous,
+            result_count=len(results)
+        )
+
+        # Build base response with pagination
         response = {
             'success': True,
             'entity': intent['entity'],
             'results': results,
             'count': len(results),
-            'execution_time_ms': int(execution_time * 1000)
+            'execution_time_ms': int(execution_time * 1000),
+            'pagination': pagination
         }
 
         # Add aggregations based on intent_type
@@ -122,9 +151,9 @@ class QueryExecutor:
             aggregations = self._calculate_aggregations(results, intent)
             response['aggregations'] = aggregations
 
-        # Cache the result (unless caching is disabled)
+        # Cache the result with pagination parameters
         if self.use_cache and not bypass_cache:
-            QueryCache.set(intent, user, response)
+            QueryCache.set(intent, user, response, offset, limit)
 
         return response
 
