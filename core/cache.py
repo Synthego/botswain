@@ -149,14 +149,28 @@ class QueryCache:
             Number of keys deleted
         """
         try:
-            # Pattern match all keys for this entity
-            pattern = f"botswain:query:{entity}:*"
-            keys = cache.keys(pattern)
-            if keys:
-                deleted = cache.delete_many(keys)
-                logger.info(f"Cache INVALIDATE: {entity} ({deleted} keys deleted)")
-                return deleted
-            return 0
+            # Get the underlying Redis client
+            # Django's cache is a ConnectionProxy that wraps RedisCacheClient
+            backend = cache._cache
+            if hasattr(backend, 'get_client'):
+                client = backend.get_client(write=True)
+
+                # Django uses format: {prefix}:{version}:{key}
+                # Default version is 1
+                prefix = cache.key_prefix
+                pattern = f"{prefix}:1:query:{entity}:*"
+                keys = client.keys(pattern)
+
+                if keys:
+                    # Delete using the underlying client
+                    deleted = client.delete(*keys)
+                    logger.info(f"Cache INVALIDATE: {entity} ({deleted} keys deleted)")
+                    return deleted
+                return 0
+            else:
+                # Fallback for non-Redis cache backends
+                logger.warning(f"Cache INVALIDATE not supported for {type(cache).__name__}")
+                return 0
         except Exception as e:
             logger.error(f"Cache INVALIDATE error for {entity}: {e}", exc_info=True)
             return 0
