@@ -128,6 +128,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - instrument_log: instrument_type, module_name, synthesizer, instrument, level, tags, synthesis_id, workorder_id, work_order_id, plate_barcode, barcode, search, message, since, start_time, until, end_time, limit, sort_order
 - service_log: service, environment, level, role, search, message, since, start_time, until, end_time, limit
 - ecs_service: service, environment, role, status, cluster
+- rds_database: database, service, environment, status, replica, include_metrics
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -251,6 +252,27 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "What's the status of BARB workers?" → service: "barb", role: "worker"
      - "Are there any stopped services?" → status: "stopped"
      - "Show me stage environment services" → environment: "stage"
+
+11. RDS database status (for rds_database entity):
+   - Queries AWS RDS database operational status and configuration
+   - Covers BARB, Buckaneer, Kraken, SOS PostgreSQL databases
+   - IMPORTANT: Requires AWS credentials (IAM or SSO)
+   - Database naming pattern: <service>-<environment>-pg-<number>
+   - Services:
+     * "barb" → barb-prod-pg-0 (primary), barb-prod-pg-replica-0 (read replica)
+     * "buckaneer" → buckaneer-prod-pg-0
+     * "kraken", "sos" → Individual production databases
+   - Environment: prod (default), stage, qa, dev, all
+   - Status: available, backing-up, modifying, etc. (RDS instance status)
+   - Replica: true (only read replicas), false (only primary instances)
+   - Returns: database status, instance type, storage, Multi-AZ, engine version, connections, CPU, endpoints
+   - Examples:
+     - "Is the BARB database available?" → service: "barb", environment: "prod"
+     - "Show me all production databases" → environment: "prod"
+     - "What's the status of Buckaneer database?" → service: "buckaneer"
+     - "Show me BARB read replicas" → service: "barb", replica: true
+     - "How much storage does BARB database have?" → service: "barb", environment: "prod"
+     - "Show me all databases in stage environment" → environment: "stage"
 
 Question: {question}
 

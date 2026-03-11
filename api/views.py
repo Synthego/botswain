@@ -159,6 +159,14 @@ class QueryAPIView(APIView):
         except ImportError:
             pass  # boto3 package not installed
 
+        # Check if boto3 is available for RDS database status
+        try:
+            import boto3
+            from core.semantic_layer.entities.rds_databases import RDSDatabaseEntity
+            registry.register(RDSDatabaseEntity())
+        except ImportError:
+            pass  # boto3 package not installed
+
         # Initialize LLM provider
 
         # Initialize LLM provider
