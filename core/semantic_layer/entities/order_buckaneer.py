@@ -5,6 +5,7 @@ Provides access to order data, status, and customer information.
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 
 class OrderEntity(BaseEntity):
@@ -84,6 +85,7 @@ class OrderEntity(BaseEntity):
         query += " ORDER BY o.created DESC"
 
         with connections['buckaneer'].cursor() as cursor:
+            SQLValidator.validate(query)
             cursor.execute(query, params)
             columns = [col[0] for col in cursor.description]
             results = [
