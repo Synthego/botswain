@@ -40,3 +40,24 @@ class TestLayoutAnalyzer:
         assert len(layout) == 1
         assert layout[0]['type'] == 'summary'
         assert 'content' in layout[0]
+
+    def test_medium_dataset_returns_summary_and_table(self):
+        """When count 5-50, return summary + table."""
+        results = {
+            'count': 10,
+            'results': [
+                {'name': f'SSA-{i}', 'status': 'running', 'location': 'Lab A'}
+                for i in range(10)
+            ],
+            'entity': 'synthesizer'
+        }
+        intent = {'entity': 'synthesizer'}
+
+        layout = LayoutAnalyzer.analyze(results, intent)
+
+        assert len(layout) == 2
+        assert layout[0]['type'] == 'summary'
+        assert layout[1]['type'] == 'table'
+        assert 'data' in layout[1]
+        assert 'columns' in layout[1]
+        assert len(layout[1]['data']) == 10

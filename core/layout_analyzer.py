@@ -41,4 +41,29 @@ class LayoutAnalyzer:
             })
             return layout
 
+        # Medium dataset (5-50): summary + table
+        if count <= 50:
+            layout.append({
+                'type': 'summary',
+                'content': f'Found {count} {intent.get("entity", "items")}'
+            })
+
+            # Generate table columns from first result
+            data = results.get('results', [])
+            columns = []
+            if data:
+                for field in data[0].keys():
+                    columns.append({
+                        'field': field,
+                        'header': field.replace('_', ' ').title(),
+                        'sortable': True
+                    })
+
+            layout.append({
+                'type': 'table',
+                'data': data,
+                'columns': columns
+            })
+            return layout
+
         return layout
