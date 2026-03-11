@@ -37,42 +37,38 @@ class ECSServicesEntity(BaseEntity):
     name = "ecs_service"
     description = "AWS ECS cluster and service operational status. Use for questions about service running status, task counts, deployment health, container status, whether services are up/down, how many instances are running."
 
-    # ECS cluster name
-    ECS_CLUSTER = 'synthego-production'
+    # ECS clusters are named {service}-{environment}
+    # Each cluster contains services: web, worker, beat
 
-    # Known ECS services by environment
-    KNOWN_SERVICES = {
-        'prod': [
-            'barb-prod-web',
-            'barb-prod-worker',
-            'barb-prod-beat',
-            'buckaneer-prod-web',
-            'buckaneer-prod-worker',
-            'kraken-prod',
-            'sos-prod',
-            'hook-prod',
-            'line-prod',
-        ],
-        'stage': [
-            'barb-stage-web',
-            'barb-stage-worker',
-            'buckaneer-stage-web',
-        ],
-        'qa': [
-            'barb-qa-web',
-            'buckaneer-qa-web',
-        ]
+    # Known ECS clusters
+    KNOWN_CLUSTERS = {
+        'barb': {
+            'prod': 'barb-prod',
+            'stage': 'barb-stage',
+            'qa': 'barb-qa',
+            'dev': 'barb-dev',
+        },
+        'buckaneer': {
+            'prod': 'buckaneer-prod',
+            'stage': 'buckaneer-stage',
+            'qa': 'buckaneer-qa',
+        },
+        'kraken': {
+            'prod': 'kraken-prod',
+        },
+        'sos': {
+            'prod': 'sos-prod',
+        },
+        'hook': {
+            'prod': 'hook-prod',
+        },
+        'line': {
+            'prod': 'line-prod',
+        },
     }
 
-    # Service aliases (user might say "BARB" instead of full service names)
-    SERVICE_ALIASES = {
-        'barb': ['barb-prod-web', 'barb-prod-worker', 'barb-prod-beat'],
-        'buckaneer': ['buckaneer-prod-web', 'buckaneer-prod-worker'],
-        'kraken': ['kraken-prod'],
-        'sos': ['sos-prod'],
-        'hook': ['hook-prod'],
-        'line': ['line-prod'],
-    }
+    # Service roles within each cluster
+    SERVICE_ROLES = ['web', 'worker', 'beat']
 
     def _get_ecs_client(self):
         """
@@ -108,98 +104,108 @@ class ECSServicesEntity(BaseEntity):
             # Default: return all production services
             filters = {'environment': 'prod'}
 
-        # Determine which service(s) to query
-        service_names = self._get_service_names(filters)
+        # Determine which cluster(s) and service(s) to query
+        clusters_to_query = self._get_clusters_to_query(filters)
 
-        if not service_names:
-            # No services to query
+        if not clusters_to_query:
+            # No clusters to query
             return []
 
-        # Query services
+        # Query each cluster
         results = []
-        try:
-            # Describe services (up to 10 at a time due to AWS API limits)
-            for i in range(0, len(service_names), 10):
-                batch = service_names[i:i+10]
+        for cluster_name, service_roles in clusters_to_query:
+            try:
+                # List services in cluster if service_roles is None (query all)
+                if service_roles is None:
+                    list_response = client.list_services(cluster=cluster_name)
+                    service_arns = list_response.get('serviceArns', [])
+                    # Extract service names from ARNs
+                    service_names = [arn.split('/')[-1] for arn in service_arns]
+                else:
+                    service_names = service_roles
 
-                response = client.describe_services(
-                    cluster=self.ECS_CLUSTER,
-                    services=batch,
-                    include=['TAGS']
-                )
+                if not service_names:
+                    continue
 
-                for service in response['services']:
-                    service_info = self._parse_service_info(service)
+                # Describe services (up to 10 at a time due to AWS API limits)
+                for i in range(0, len(service_names), 10):
+                    batch = service_names[i:i+10]
 
-                    # Apply status filter if specified
-                    if 'status' in filters:
-                        if filters['status'].lower() == 'running' and service_info['running_count'] == 0:
-                            continue
-                        elif filters['status'].lower() == 'stopped' and service_info['running_count'] > 0:
-                            continue
+                    response = client.describe_services(
+                        cluster=cluster_name,
+                        services=batch,
+                        include=['TAGS']
+                    )
 
-                    results.append(service_info)
+                    for service in response['services']:
+                        service_info = self._parse_service_info(service, cluster_name)
 
-        except Exception as e:
-            # Query failed
-            return []
+                        # Apply status filter if specified
+                        if 'status' in filters:
+                            if filters['status'].lower() == 'running' and service_info['running_count'] == 0:
+                                continue
+                            elif filters['status'].lower() == 'stopped' and service_info['running_count'] > 0:
+                                continue
+
+                        results.append(service_info)
+
+            except Exception as e:
+                # Query failed for this cluster, continue with others
+                continue
 
         return results
 
-    def _get_service_names(self, filters: Dict[str, Any]) -> List[str]:
+    def _get_clusters_to_query(self, filters: Dict[str, Any]) -> List[tuple]:
         """
-        Determine which service names to query based on filters.
+        Determine which clusters and services to query based on filters.
 
         Args:
             filters: Query filters
 
         Returns:
-            List of ECS service names
+            List of tuples: (cluster_name, service_roles_list or None for all)
         """
-        service_names = []
+        clusters = []
+        environment = filters.get('environment', 'prod').lower()
+        role_filter = filters.get('role', '').lower()
 
         # Specific service filter
         if 'service' in filters:
-            service = filters['service'].lower()
-            env_filter = filters.get('environment', 'prod').lower()
+            service_name = filters['service'].lower()
 
-            # Check if it's an alias (barb, buckaneer, etc.)
-            if service in self.SERVICE_ALIASES:
-                # Get all services for this alias
-                for service_name in self.SERVICE_ALIASES[service]:
-                    if env_filter in service_name or env_filter == 'all':
-                        service_names.append(service_name)
-            else:
-                # Direct service name
-                service_names.append(service)
+            if service_name in self.KNOWN_CLUSTERS:
+                # Get cluster for this service and environment
+                service_clusters = self.KNOWN_CLUSTERS[service_name]
+                if environment in service_clusters:
+                    cluster = service_clusters[environment]
+                    # Get roles to query
+                    if role_filter:
+                        roles = [role_filter] if role_filter in self.SERVICE_ROLES else []
+                    else:
+                        roles = None  # Query all services in cluster
+                    clusters.append((cluster, roles))
 
-        # Environment filter only
-        elif 'environment' in filters:
-            env = filters['environment'].lower()
-            if env in self.KNOWN_SERVICES:
-                service_names.extend(self.KNOWN_SERVICES[env])
-            elif env == 'all':
-                # All services across all environments
-                for services in self.KNOWN_SERVICES.values():
-                    service_names.extend(services)
+        # Environment filter only (query all known services in that environment)
+        else:
+            for service_name, service_clusters in self.KNOWN_CLUSTERS.items():
+                if environment in service_clusters:
+                    cluster = service_clusters[environment]
+                    # Get roles to query
+                    if role_filter:
+                        roles = [role_filter] if role_filter in self.SERVICE_ROLES else []
+                    else:
+                        roles = None  # Query all services in cluster
+                    clusters.append((cluster, roles))
 
-        # Role filter (web, worker, beat)
-        if 'role' in filters:
-            role = filters['role'].lower()
-            service_names = [s for s in service_names if role in s]
+        return clusters
 
-        # No filters: return all production services
-        if not service_names:
-            service_names.extend(self.KNOWN_SERVICES['prod'])
-
-        return service_names
-
-    def _parse_service_info(self, service: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_service_info(self, service: Dict[str, Any], cluster_name: str) -> Dict[str, Any]:
         """
         Parse ECS service information into structured format.
 
         Args:
             service: ECS service description from boto3
+            cluster_name: Name of the ECS cluster (e.g., 'barb-prod')
 
         Returns:
             Dict with service status and health information
@@ -221,12 +227,14 @@ class ECSServicesEntity(BaseEntity):
             service['runningCount'] > 0
         )
 
-        # Extract service name components
+        # Extract service components from cluster name and service name
+        # Cluster: barb-prod, Service: web → base_service=barb, environment=prod, role=web
+        cluster_parts = cluster_name.split('-')
+        base_service = cluster_parts[0] if cluster_parts else 'unknown'
+        environment = cluster_parts[1] if len(cluster_parts) > 1 else 'unknown'
+
         service_name = service['serviceName']
-        service_parts = service_name.split('-')
-        base_service = service_parts[0] if service_parts else service_name
-        environment = service_parts[1] if len(service_parts) > 1 else 'unknown'
-        role = service_parts[2] if len(service_parts) > 2 else 'web'
+        role = service_name  # The service name within the cluster is the role (web, worker, beat)
 
         # Calculate task health percentage
         running = service['runningCount']
@@ -243,7 +251,8 @@ class ECSServicesEntity(BaseEntity):
             }
 
         return {
-            'service_name': service_name,
+            'service_name': f"{cluster_name}-{service_name}",  # Full name: barb-prod-web
+            'cluster': cluster_name,
             'base_service': base_service,
             'environment': environment,
             'role': role,
@@ -272,6 +281,7 @@ class ECSServicesEntity(BaseEntity):
         """Available attributes for ECS services"""
         return [
             'service_name',
+            'cluster',
             'base_service',
             'environment',
             'role',
