@@ -1,22 +1,23 @@
 """
 GitHub Issues entity for querying issues and pull requests.
-Uses GitHub CLI (gh) for READ-ONLY API access.
+Uses GitHub GraphQL API for fast queries, with gh CLI fallback.
 
 SECURITY: Restricted to Synthego organization repositories only.
 """
 import json
+import os
 import subprocess
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from .base import BaseEntity
 
 
 class GitHubIssuesEntity(BaseEntity):
     """
-    Queries GitHub issues and pull requests using gh CLI.
+    Queries GitHub issues and pull requests using GraphQL API (primary) or gh CLI (fallback).
 
     SECURITY RESTRICTIONS:
-    - READ-ONLY access via gh CLI
+    - READ-ONLY access via GraphQL API / gh CLI
     - Limited to Synthego organization repositories only
     - No write operations allowed
     """
@@ -26,6 +27,36 @@ class GitHubIssuesEntity(BaseEntity):
 
     # Allowed GitHub organization
     ALLOWED_ORG = "Synthego"
+
+    # GitHub GraphQL endpoint
+    GRAPHQL_URL = "https://api.github.com/graphql"
+
+    def _get_github_token(self) -> Optional[str]:
+        """
+        Get GitHub token from environment or gh CLI.
+
+        Returns:
+            GitHub token or None if unavailable
+        """
+        # Try environment variable first
+        token = os.environ.get('GITHUB_TOKEN')
+        if token:
+            return token
+
+        # Try to get from gh CLI
+        try:
+            result = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except:
+            pass
+
+        return None
 
     def _validate_repo(self, repo: str) -> bool:
         """
@@ -100,7 +131,7 @@ class GitHubIssuesEntity(BaseEntity):
 
     def get_queryset(self, filters: Dict[str, Any] = None):
         """
-        Get issues from GitHub using gh CLI (READ-ONLY).
+        Get issues from GitHub using GraphQL API (preferred) or gh CLI (fallback).
 
         Returns a list of dicts (not a Django queryset) since GitHub is an API.
 
@@ -134,7 +165,17 @@ class GitHubIssuesEntity(BaseEntity):
             # If no valid Synthego repos, return empty results
             return []
 
-        # Query each repo and combine results
+        # Try GraphQL first (much faster for multi-repo)
+        token = self._get_github_token()
+        if token and len(valid_repos) > 1:
+            # Use GraphQL for multi-repo queries (5x faster)
+            try:
+                return self._query_graphql(valid_repos, filters, token)
+            except Exception:
+                # Fall back to gh CLI if GraphQL fails
+                pass
+
+        # Fallback to gh CLI (one repo at a time)
         all_issues = []
         for repo in valid_repos:
             issues = self._query_single_repo(repo, filters)
@@ -142,9 +183,194 @@ class GitHubIssuesEntity(BaseEntity):
 
         return all_issues
 
+    def _query_graphql(self, repos: List[str], filters: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
+        """
+        Query GitHub using GraphQL API (single request for all repos).
+
+        Args:
+            repos: List of repositories in format "owner/repo"
+            filters: Query filters
+            token: GitHub API token
+
+        Returns:
+            List of issue dicts
+        """
+        import requests
+
+        # Build search query
+        search_parts = [f"org:{self.ALLOWED_ORG}"]
+
+        # Add repo filter if specific repos requested (not all)
+        if repos != self.DEFAULT_REPOS:
+            repo_queries = " ".join([f"repo:{repo}" for repo in repos])
+            search_parts.append(f"({repo_queries})")
+
+        # State filter
+        if filters and 'state' in filters:
+            state = filters['state'].lower()
+            if state == 'open':
+                search_parts.append("is:open")
+            elif state == 'closed':
+                search_parts.append("is:closed")
+            # 'all' = no filter
+
+        # Issue vs PR type
+        if filters and filters.get('type') == 'pr':
+            search_parts.append("is:pr")
+        else:
+            search_parts.append("is:issue")
+
+        # Assignee filter
+        if filters and 'assignee' in filters:
+            search_parts.append(f"assignee:{filters['assignee']}")
+
+        # Author filter
+        if filters and 'author' in filters:
+            search_parts.append(f"author:{filters['author']}")
+
+        # Label filter
+        if filters and 'label' in filters:
+            search_parts.append(f"label:{filters['label']}")
+
+        # Search text filter
+        if filters and 'search' in filters:
+            search_parts.append(f"{filters['search']} in:title,body")
+
+        # Date filters
+        if filters and 'created_after' in filters:
+            date_value = self._parse_date_filter(filters['created_after'])
+            search_parts.append(f"created:>={date_value.strftime('%Y-%m-%d')}")
+
+        if filters and 'updated_after' in filters:
+            date_value = self._parse_date_filter(filters['updated_after'])
+            search_parts.append(f"updated:>={date_value.strftime('%Y-%m-%d')}")
+
+        search_query = " ".join(search_parts)
+
+        # GraphQL query
+        query = """
+        query($searchQuery: String!, $first: Int!) {
+          search(query: $searchQuery, type: ISSUE, first: $first) {
+            issueCount
+            nodes {
+              ... on Issue {
+                number
+                title
+                state
+                author {
+                  login
+                }
+                labels(first: 10) {
+                  nodes {
+                    name
+                  }
+                }
+                assignees(first: 10) {
+                  nodes {
+                    login
+                  }
+                }
+                createdAt
+                updatedAt
+                closedAt
+                url
+                body
+                repository {
+                  nameWithOwner
+                }
+              }
+              ... on PullRequest {
+                number
+                title
+                state
+                author {
+                  login
+                }
+                labels(first: 10) {
+                  nodes {
+                    name
+                  }
+                }
+                assignees(first: 10) {
+                  nodes {
+                    login
+                  }
+                }
+                createdAt
+                updatedAt
+                closedAt
+                url
+                body
+                repository {
+                  nameWithOwner
+                }
+              }
+            }
+          }
+        }
+        """
+
+        # Execute GraphQL request
+        response = requests.post(
+            self.GRAPHQL_URL,
+            json={
+                'query': query,
+                'variables': {
+                    'searchQuery': search_query,
+                    'first': 100
+                }
+            },
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json'
+            },
+            timeout=30
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        if 'errors' in data:
+            raise Exception(f"GraphQL errors: {data['errors']}")
+
+        # Parse results into our format
+        issues = []
+        for node in data['data']['search']['nodes']:
+            if node is None:
+                continue
+
+            # Extract author
+            author = node.get('author', {})
+            author_login = author.get('login') if author else None
+
+            # Extract labels
+            labels_data = node.get('labels', {}).get('nodes', [])
+            labels = [label['name'] for label in labels_data if label]
+
+            # Extract assignees
+            assignees_data = node.get('assignees', {}).get('nodes', [])
+            assignees = [assignee['login'] for assignee in assignees_data if assignee]
+
+            issues.append({
+                'number': node.get('number'),
+                'title': node.get('title'),
+                'state': node.get('state', '').upper(),  # OPEN/CLOSED
+                'author': {'login': author_login} if author_login else None,
+                'labels': [{'name': name} for name in labels],
+                'assignees': [{'login': login} for login in assignees],
+                'createdAt': node.get('createdAt'),
+                'updatedAt': node.get('updatedAt'),
+                'closedAt': node.get('closedAt'),
+                'url': node.get('url'),
+                'body': node.get('body'),
+                'repo': node.get('repository', {}).get('nameWithOwner')
+            })
+
+        return issues
+
     def _query_single_repo(self, repo: str, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Query a single repository for issues.
+        Query a single repository for issues using gh CLI (fallback).
 
         Args:
             repo: Repository in format "owner/repo"
@@ -195,7 +421,7 @@ class GitHubIssuesEntity(BaseEntity):
             )
 
             issues = json.loads(result.stdout)
-            
+
             # Add repo information to each issue for multi-repo queries
             for issue in issues:
                 issue['repo'] = repo
