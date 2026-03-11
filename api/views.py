@@ -127,6 +127,13 @@ class QueryAPIView(APIView):
             from core.semantic_layer.entities.github_issues import GitHubIssuesEntity
 
             registry.register(GitHubIssuesEntity())
+        
+        # Check if git is available
+        has_git = shutil.which('git') is not None
+        if has_git:
+            from core.semantic_layer.entities.git_commits import GitCommitsEntity
+
+            registry.register(GitCommitsEntity())
 
         # Initialize LLM provider
 

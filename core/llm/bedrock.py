@@ -124,6 +124,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - workflow: status, template, template_name, work_order_id, workflow_id, created_after, created_before
 - order: status, factory, bigcommerce_id, order_id, created_after, created_before, email
 - github_issue: state, label, assignee, author, mention, type, created_after, updated_after, search, repo
+- git_commit: author, since, until, search, message, branch, repo, limit
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -167,6 +168,24 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "issues with bug label" → label: "bug", repo: "default"
      - "barb issues about midscale" → search: "midscale", repo: "Synthego/barb"
    - IMPORTANT: Non-Synthego repos will be rejected
+
+7. Git commits (for git_commit entity):
+   - Searches git commit history across local repository clones
+   - Author: commit author name (e.g., "Dana Janezic", "danajanezic")
+   - Date filters: since, until (accepts same formats as workflow dates)
+   - Message search: search or message filter (searches commit subject and body)
+   - Branch: specific branch name (default: searches all branches)
+   - Repo: Can be single repo "barb" or comma-separated list "barb,buckaneer"
+   - Repo inference rules (same as github_issue):
+     * If question mentions specific project → use that repo
+     * If question is general ("my commits", "recent changes") → use "default" to search key repos
+     * Available repos: barb, buckaneer, kraken, galleon, hook, line, sos
+   - Examples:
+     - "my recent commits" → author: "danajanezic", repo: "default"
+     - "commits in barb repo last week" → repo: "barb", since: "NOW() - INTERVAL '7 days'"
+     - "commits about midscale" → search: "midscale", repo: "default"
+     - "commits by dana in last 30 days" → author: "dana", since: "NOW() - INTERVAL '30 days'", repo: "default"
+
 
 Question: {question}
 
