@@ -151,6 +151,14 @@ class QueryAPIView(APIView):
         except ImportError:
             pass  # boto3 package not installed
 
+        # Check if boto3 is available for ECS cluster status
+        try:
+            import boto3
+            from core.semantic_layer.entities.ecs_services import ECSServicesEntity
+            registry.register(ECSServicesEntity())
+        except ImportError:
+            pass  # boto3 package not installed
+
         # Initialize LLM provider
 
         # Initialize LLM provider

@@ -127,6 +127,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - git_commit: author, since, until, search, message, branch, repo, limit
 - instrument_log: instrument_type, module_name, synthesizer, instrument, level, tags, synthesis_id, workorder_id, work_order_id, plate_barcode, barcode, search, message, since, start_time, until, end_time, limit, sort_order
 - service_log: service, environment, level, role, search, message, since, start_time, until, end_time, limit
+- ecs_service: service, environment, role, status, cluster
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -230,6 +231,26 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "Celery task failures in BARB this week" → service: "barb", role: "worker", search: "Task.*failed", since: "7d"
      - "Kraken errors in stage environment" → service: "kraken", environment: "stage", level: "ERROR", since: "24h"
      - "Django exceptions in any service today" → search: "Traceback", since: "24h"
+
+10. ECS service status (for ecs_service entity):
+   - Queries AWS ECS cluster for service operational status and health
+   - Covers BARB, Buckaneer, Kraken, SOS, Hook, Line services
+   - IMPORTANT: Requires AWS credentials (IAM or SSO)
+   - Services:
+     * "barb" → Returns all BARB services (web, worker, beat)
+     * "buckaneer" → Returns all Buckaneer services (web, worker)
+     * "kraken", "sos", "hook", "line" → Individual services
+   - Environment: prod (default), stage, qa, all
+   - Role: web (Django/FastAPI server), worker (Celery worker), beat (Celery scheduler)
+   - Status: running (services with running tasks), stopped (services with no running tasks)
+   - Returns: service name, task counts (desired vs running), health status, deployment status
+   - Examples:
+     - "Is BARB running?" → service: "barb", environment: "prod"
+     - "Show me all production services" → environment: "prod"
+     - "How many Buckaneer tasks are running?" → service: "buckaneer"
+     - "What's the status of BARB workers?" → service: "barb", role: "worker"
+     - "Are there any stopped services?" → status: "stopped"
+     - "Show me stage environment services" → environment: "stage"
 
 Question: {question}
 
