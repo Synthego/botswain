@@ -29,6 +29,34 @@ class QueryRequestSerializer(serializers.Serializer):
         help_text="Override default result limit (max 1000)"
     )
 
+    # Page-based pagination parameters
+    page = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        help_text="Page number (1-indexed)"
+    )
+
+    page_size = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=1000,
+        help_text="Results per page (max 1000)"
+    )
+
+    # Offset-based pagination parameters
+    offset = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        help_text="Number of results to skip"
+    )
+
+    limit = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=1000,
+        help_text="Maximum results to return (max 1000)"
+    )
+
 class QueryResponseSerializer(serializers.Serializer):
     """Serializer for query response"""
 
