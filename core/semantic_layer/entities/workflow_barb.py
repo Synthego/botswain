@@ -5,6 +5,7 @@ Provides access to workflow execution data, templates, and status.
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 
 class WorkflowEntity(BaseEntity):
@@ -78,6 +79,7 @@ class WorkflowEntity(BaseEntity):
         query += " ORDER BY w.created DESC"
 
         with connections['barb'].cursor() as cursor:
+            SQLValidator.validate(query)
             cursor.execute(query, params)
             columns = [col[0] for col in cursor.description]
             results = [
