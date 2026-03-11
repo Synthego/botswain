@@ -1,0 +1,36 @@
+"""
+LayoutAnalyzer - Analyzes query results and generates layout specifications.
+
+Determines which components to display based on result count, data types, and entity metadata.
+"""
+from typing import Dict, Any, List
+
+
+class LayoutAnalyzer:
+    """Analyzes query results and returns layout specification array."""
+
+    @staticmethod
+    def analyze(results: Dict[str, Any], intent: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Analyze query results and return layout specification.
+
+        Args:
+            results: Query results dict with 'count', 'results', 'entity' keys
+            intent: Intent dict with 'entity' and other metadata
+
+        Returns:
+            List of component specifications
+        """
+        layout = []
+        count = results.get('count', 0)
+
+        # Empty results
+        if count == 0:
+            entity_name = intent.get('entity', 'items')
+            layout.append({
+                'type': 'empty',
+                'message': f'No {entity_name} found matching your criteria'
+            })
+            return layout
+
+        return layout
