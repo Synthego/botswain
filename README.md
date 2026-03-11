@@ -14,6 +14,7 @@ Botswain is a Django-based microservice that enables natural language queries ac
 - **Semantic Layer**: Safe, validated queries with automatic intent parsing
 - **Audit Logging**: Complete audit trail with token usage metrics
 - **REST API**: HTTP endpoint for integration with other services
+- **Query Result Pagination**: Comprehensive pagination support with smart estimation (no COUNT queries)
 - **Cross-System Correlation**: Link factory operations, orders, infrastructure, and code changes
 
 ## 📊 Supported Data Sources
@@ -272,6 +273,90 @@ curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json"
 
 # Debug mode
 ./botswain-cli.py "Show BARB errors today" --debug
+
+## 📄 Query Result Pagination
+
+Botswain supports comprehensive pagination for navigating large result sets efficiently.
+
+### Dual Parameter Support
+
+**Page-based (user-friendly):**
+```bash
+curl -X POST http://localhost:8002/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Show orders",
+    "page": 2,
+    "page_size": 50
+  }'
+```
+
+**Offset-based (developer-friendly):**
+```bash
+curl -X POST http://localhost:8002/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Show orders",
+    "offset": 50,
+    "limit": 50
+  }'
+```
+
+**Priority:** If both styles are provided, `offset`/`limit` takes precedence.
+
+### Smart Estimation
+
+Botswain uses the **limit+1 trick** instead of expensive COUNT queries:
+- Fetches `limit + 1` results to detect if more exist
+- Provides "at least N results" estimates: `"100+"`
+- Shows exact totals on the last page: `125`
+- Works with all data sources (SQL, APIs, logs, GitHub)
+- **Performance:** Single query, no COUNT overhead
+
+### Pagination Metadata
+
+Every paginated response includes comprehensive metadata:
+
+```json
+{
+  "question": "Show orders",
+  "response": "Found 245 orders (showing results 51-100)",
+  "results": [...],
+  "count": 50,
+  "pagination": {
+    "current_page": 2,
+    "page_size": 50,
+    "offset": 50,
+    "limit": 50,
+    "has_next": true,
+    "has_previous": true,
+    "next_page": 3,
+    "previous_page": 1,
+    "next_offset": 100,
+    "previous_offset": 0,
+    "estimated_total": "100+",
+    "estimated_total_pages": "3+"
+  }
+}
+```
+
+### Caching with Pagination
+
+- Each page is cached independently
+- Cache key includes `offset` and `limit`
+- `page=1, page_size=50` and `offset=0, limit=50` → same cache entry
+- Cache TTL remains per-entity (30s - 1hr)
+
+### Defaults
+
+When no pagination parameters are provided:
+- **Page:** 1 (or `offset=0`)
+- **Page size / Limit:** 100
+- **Maximum:** 1000 results per page
+
+### Complete Documentation
+
+See design document: `docs/plans/2026-03-11-pagination-design.md`
 
 ## 🔍 Query Capabilities by Entity
 
@@ -598,7 +683,7 @@ BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 - [x] Automatic query recovery
 - [x] Environment variable credential management
 - [x] Redis caching with per-entity TTL (30s - 1hr)
-- [ ] Query result pagination
+- [x] Query result pagination with smart estimation
 - [ ] Slack integration
 
 **Planned:**

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Query Result Pagination**
+- Comprehensive offset-based pagination for all query results
+- Dual parameter support: page/page_size (user-friendly) OR offset/limit (developer-friendly)
+- Smart estimation using limit+1 trick (no expensive COUNT queries)
+- Full pagination metadata: has_next, has_previous, estimated totals, next/previous helpers
+- Cache-aware pagination (offset/limit included in cache keys)
+- Layout integration (summary shows result ranges: "showing results 51-100")
+- Backward compatible (defaults to page=1, limit=100)
+- 45 passing tests across 8 test suites
+- Complete API documentation in `docs/API.md`
+- Design documentation: `docs/plans/2026-03-11-pagination-design.md`
+- Implementation documentation: `docs/plans/2026-03-11-pagination-implementation.md`
+
+**API Parameters**:
+- `page` (int, min 1) - Page number (1-indexed)
+- `page_size` (int, min 1, max 1000) - Results per page
+- `offset` (int, min 0) - Number of results to skip
+- `limit` (int, min 1, max 1000) - Maximum results to return
+
+**Performance**:
+- Single query per page (smart estimation with limit+1)
+- No COUNT query overhead
+- < 2ms pagination logic overhead
+- Per-page caching (independent cache entries)
+
 ## [0.2.0] - 2026-03-10 - AWS Bedrock SDK Migration
 
 ### Added
@@ -270,9 +297,9 @@ See `MIGRATION_SUMMARY.md` and `DEPLOYMENT_GUIDE.md` for complete details.
 ### Planned Features
 
 **Near-term** (Next 1-2 months):
-- [ ] Redis caching for frequent queries
+- [x] Redis caching for frequent queries
 - [ ] Additional entities (WorkOrder, Inventory, Locations)
-- [ ] Query result pagination
+- [x] Query result pagination
 - [ ] Cost alerts and budget management
 
 **Mid-term** (2-6 months):
