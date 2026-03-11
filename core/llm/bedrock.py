@@ -301,13 +301,35 @@ Question: {question}
      - "Show me NetSuite orders for customer ABC Corp" → customer: "ABC Corp"
 
 Return ONLY valid JSON with this structure:
+
+Intent Types - CRITICAL FOR ACCURATE RESULTS:
+
+1. "query" - Use for questions asking to "show", "list", "find" specific records
+   - Returns raw data records
+   - Example: "Show me available synthesizers"
+
+2. "count" - Use for questions asking "how many", "count", "number of"
+   - Returns accurate programmatic count
+   - Supports GROUP BY for grouped counts
+   - Example: "How many orders were placed this week?"
+   - With grouping: "Count orders by status"
+   - Add "group_by": "field_name" for grouped counts
+
+3. "aggregate" - Use for questions about totals, averages, min/max
+   - Returns programmatic calculations (SUM, AVG, MIN, MAX)
+   - Example: "What's the total revenue this month?"
+   - Example: "What's the average order value?"
+   - Add "aggregation_function": "sum|avg|min|max" (optional, defaults to all)
+
 {{
   "entity": "entity_name",
   "intent_type": "query|count|aggregate",
   "attributes": ["attr1", "attr2"],
   "filters": {{"key": "value"}},
   "sort": {{"field": "name", "direction": "asc"}},
-  "limit": 10
+  "limit": 10,
+  "aggregation_function": "sum|avg|min|max",  // Optional: for aggregate intent_type
+  "group_by": "field_name"  // Optional: for count intent_type
 }}
 
 CRITICAL: Only use filters listed above for the chosen entity. If question asks about something not in valid filters, return empty filters object.
