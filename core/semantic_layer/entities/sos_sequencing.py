@@ -6,6 +6,7 @@ Queries SOS PostgreSQL database for READ-ONLY access to sequencing data.
 SECURITY: Read-only access to SOS database. Uses existing database connection.
 """
 from typing import Dict, Any, List
+from datetime import datetime, timedelta
 import logging
 from .base import BaseEntity
 

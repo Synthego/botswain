@@ -6,6 +6,7 @@ Queries Kraken's PostgreSQL database for READ-ONLY access to workflow execution 
 SECURITY: Read-only access to Kraken database. Uses existing database connection.
 """
 from typing import Dict, Any, List
+from datetime import datetime, timedelta
 import logging
 from .base import BaseEntity
 
