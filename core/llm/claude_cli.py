@@ -1,7 +1,7 @@
 import subprocess
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .provider import LLMProvider
 
 class ClaudeCLIProvider(LLMProvider):
@@ -33,8 +33,14 @@ class ClaudeCLIProvider(LLMProvider):
         except json.JSONDecodeError:
             raise ValueError(f"Invalid JSON from Claude: {result.stdout}")
 
-    def format_response(self, query_results: Any, original_question: str) -> str:
-        """Format query results into natural language using Claude CLI"""
+    def format_response(self, query_results: Any, original_question: str, intent: Optional[Dict[str, Any]] = None) -> str:
+        """Format query results into natural language using Claude CLI
+
+        Args:
+            query_results: Query execution results
+            original_question: User's original question
+            intent: Optional parsed intent (not used in CLI provider)
+        """
         prompt = self._build_response_prompt(query_results, original_question)
 
         result = subprocess.run(
@@ -92,12 +98,12 @@ Provide a concise, helpful natural language response."""
         """Strip markdown code blocks from JSON response"""
         # Remove ```json and ``` markers
         text = text.strip()
-        
+
         # Pattern to match markdown code blocks
         pattern = r'^```(?:json)?\s*\n?(.*?)\n?```$'
         match = re.search(pattern, text, re.DOTALL)
-        
+
         if match:
             return match.group(1).strip()
-        
+
         return text

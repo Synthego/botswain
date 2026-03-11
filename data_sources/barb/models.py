@@ -1,68 +1,52 @@
 """
-Mock BARB models for development.
+Unmanaged Django models for BARB production tables.
 
-In production, this would import from syntheseas-barbie package:
-    from syntheseas.barbie.models import Instrument, InstrumentType, etc.
+These models map to existing BARB database tables without creating/managing them.
+Django will query these tables directly from the 'barb' database connection.
 
-For now, we provide mock implementations.
+NOTE: syntheseas-barbie package is deprecated. Using unmanaged models instead.
 """
+from django.db import models
 
-class MockQuerySet:
-    """Mock Django queryset for testing"""
 
-    def __init__(self, data=None):
-        self._data = data or []
+class InstrumentType(models.Model):
+    """Unmanaged model for BARB's inventory_instrument_type table"""
 
-    def filter(self, **kwargs):
-        # Simple filter implementation
-        return MockQuerySet(self._data)
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
 
-    def select_related(self, *args):
-        return self
+    class Meta:
+        managed = False
+        db_table = 'inventory_instrument_type'
 
-    def values(self, *fields):
-        return self._data
+    def __str__(self):
+        return self.name
 
-    def __iter__(self):
-        return iter(self._data)
 
-class MockManager:
-    """Mock Django model manager"""
-
-    def __init__(self, model_class):
-        self.model_class = model_class
-
-    def filter(self, **kwargs):
-        return MockQuerySet([])
-
-    def all(self):
-        return MockQuerySet([])
-
-class InstrumentType:
-    """Mock InstrumentType model"""
-    name = None
-
-class Factory:
-    """Mock Factory model"""
-    name = None
-
-class Location:
-    """Mock Location model"""
-    name = None
-
-class Instrument:
+class Instrument(models.Model):
     """
-    Mock Instrument model.
+    Unmanaged model for BARB's inventory_instrument table.
 
-    In real implementation, this would be:
-        from syntheseas.barbie.models import Instrument
+    Maps to existing production table - does NOT create or migrate.
     """
 
-    objects = MockManager(None)
+    barcode_ptr_id = models.IntegerField(primary_key=True)
+    name = models.CharField(max_length=255)
+    status = models.CharField(max_length=50)
+    host = models.CharField(max_length=255, null=True, blank=True)
+    port = models.IntegerField(null=True, blank=True)
 
-    def __init__(self):
-        self.name = None
-        self.status = None
-        self.instrument_type = InstrumentType()
-        self.factory = Factory()
-        self.installation_location = Location()
+    # Foreign key to instrument type (other foreign keys removed - tables don't exist)
+    instrument_type = models.ForeignKey(InstrumentType, on_delete=models.DO_NOTHING, db_column='instrument_type_id')
+
+    class Meta:
+        managed = False  # Don't create/migrate this table
+        db_table = 'inventory_instrument'  # Use existing BARB table
+
+    def __str__(self):
+        return f"{self.name} ({self.barcode_ptr_id})"
+
+    @property
+    def barcode(self):
+        """Alias for barcode_ptr_id"""
+        return str(self.barcode_ptr_id)

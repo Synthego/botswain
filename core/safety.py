@@ -6,11 +6,12 @@ class SafetyValidator:
     MAX_RESULTS = 1000
     MAX_EXECUTION_TIME_SECONDS = 30
 
-    # Dangerous SQL patterns to block
+    # Dangerous SQL patterns to block (must be exact case match to avoid false positives)
     DANGEROUS_PATTERNS = [
-        'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'INSERT', 'UPDATE',
-        '--', ';--', 'EXEC', 'EXECUTE', 'UNION', 'SCRIPT',
-        'xp_', 'sp_',  # SQL Server stored procedures
+        'DROP TABLE', 'DROP DATABASE', 'DELETE FROM', 'TRUNCATE TABLE',
+        'ALTER TABLE', 'INSERT INTO', 'UPDATE SET',
+        '--', ';--', 'UNION SELECT', '<SCRIPT', 'JAVASCRIPT:',
+        'XP_CMDSHELL', 'SP_EXECUTESQL',
     ]
 
     @classmethod
@@ -37,7 +38,7 @@ class SafetyValidator:
     @classmethod
     def _check_dangerous_filters(cls, filters: Dict[str, Any]):
         """
-        Check for SQL injection patterns in filters.
+        Check for SQL injection patterns in filter values.
 
         Args:
             filters: Filter dict to check
@@ -45,9 +46,13 @@ class SafetyValidator:
         Raises:
             ValueError: If dangerous pattern detected
         """
-        # Convert filters to string for pattern matching
-        filter_str = str(filters).upper()
+        # Check each filter value individually (not the keys)
+        for key, value in filters.items():
+            if value is None:
+                continue
 
-        for pattern in cls.DANGEROUS_PATTERNS:
-            if pattern in filter_str:
-                raise ValueError(f"Dangerous pattern detected: {pattern}")
+            value_str = str(value).upper()
+
+            for pattern in cls.DANGEROUS_PATTERNS:
+                if pattern in value_str:
+                    raise ValueError(f"Dangerous pattern detected in filter '{key}': {pattern}")

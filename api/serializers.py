@@ -22,6 +22,13 @@ class QueryRequestSerializer(serializers.Serializer):
         help_text="Whether to use cached results"
     )
 
+    override_limit = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=1000,
+        help_text="Override default result limit (max 1000)"
+    )
+
 class QueryResponseSerializer(serializers.Serializer):
     """Serializer for query response"""
 

@@ -76,13 +76,14 @@ class BedrockProvider(LLMProvider):
 
         return intent_data
 
-    def format_response(self, query_results: Any, original_question: str) -> Dict[str, Any]:
+    def format_response(self, query_results: Any, original_question: str, intent: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Format query results into natural language response using Bedrock.
 
         Args:
             query_results: Query execution results
             original_question: User's original question
+            intent: Optional parsed intent (unused - kept for API compatibility)
 
         Returns:
             Dict with 'text' (formatted response) and 'tokens' (usage info)
@@ -117,6 +118,37 @@ class BedrockProvider(LLMProvider):
 Available entities:
 {entities_desc}
 
+VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
+- synthesizer: status, available, barcode
+- instrument: status, factory, barcode, instrument_type, type
+- workflow: status, template, template_name, work_order_id, workflow_id, created_after, created_before
+- order: status, factory, bigcommerce_id, order_id, created_after, created_before, email
+
+Filter mapping rules (CRITICAL - follow these exactly):
+
+1. Status values:
+   - Use "online" for: working, operational, available, up, running
+   - Use "offline" for: down, broken, not working, unavailable, failed
+
+2. Date ranges (for workflow entity):
+   - "last 30 days" → created_after: "NOW() - INTERVAL '30 days'"
+   - "yesterday" → created_after: "NOW() - INTERVAL '1 day'"
+   - "this week" → created_after: "NOW() - INTERVAL '7 days'"
+   - "this month" → created_after: "NOW() - INTERVAL '30 days'"
+   - Use ISO format for specific dates: "2026-03-10"
+
+3. Template names (for workflow entity):
+   - Use filter "template" or "template_name" with partial match
+   - Examples: "RNA synthesis" → template: "RNA", "Plating" → template: "Plating"
+
+4. Work orders (for workflow entity):
+   - Use filter "work_order_id" with numeric ID
+   - Example: "work order 578630" → work_order_id: 578630
+
+5. Barcodes (for synthesizer/instrument entities):
+   - Use filter "barcode" with exact value
+   - Example: "synthesizer 1717" → barcode: 1717
+
 Question: {question}
 
 Return ONLY valid JSON with this structure:
@@ -128,20 +160,21 @@ Return ONLY valid JSON with this structure:
   "sort": {{"field": "name", "direction": "asc"}},
   "limit": 10
 }}
+
+CRITICAL: Only use filters listed above for the chosen entity. If question asks about something not in valid filters, return empty filters object.
 """
 
     def _build_response_prompt(self, query_results: Any, original_question: str) -> str:
         """Build prompt for response formatting"""
         results_json = json.dumps(query_results, indent=2, default=str)
 
-        return f"""You are a factory query assistant. Format these query results as a natural language response.
+        # Don't include the original question verbatim to avoid Bedrock refusal triggers
+        return f"""Database query results:
 
-Original question: {original_question}
-
-Query results:
 {results_json}
 
-Provide a concise, helpful natural language response in markdown format."""
+Write a natural language summary of these results in markdown format."""
+
 
     def _strip_markdown_json(self, text: str) -> str:
         """Strip markdown code blocks from JSON response"""
