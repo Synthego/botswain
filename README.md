@@ -437,6 +437,30 @@ botswain/
 
 ## 🔒 Security
 
+### Read-Only Enforcement - Defense in Depth
+
+Botswain implements a **3-layer security architecture** to guarantee read-only operations:
+
+**Layer 1: LLM Constraints**
+- System prompts explicitly forbid write operations
+- LLM trained to reject modification requests
+- Post-generation intent validation (whitelist: query, count, aggregate only)
+
+**Layer 2: SQL Validation**
+- All raw SQL statements validated before execution
+- Whitelist approach: Only SELECT statements allowed
+- Blocks dangerous keywords (INSERT, UPDATE, DELETE, DROP, ALTER, etc.)
+
+**Layer 3: Database Access Control**
+- Read-only database users (`readonlyuser`)
+- BARB production read-replica (not primary)
+- Database router blocks write operations
+
+**Why Defense-in-Depth?**
+Each layer independently prevents writes. If one layer is bypassed (e.g., LLM jailbreak, SQL injection), the other layers still protect the database.
+
+See `SECURITY.md` for complete security documentation, threat model, and attack scenario testing.
+
 ### Credential Management
 
 **✅ DO:**
