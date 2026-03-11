@@ -125,7 +125,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - order: status, factory, bigcommerce_id, order_id, created_after, created_before, email
 - github_issue: state, label, assignee, author, mention, type, created_after, updated_after, search, repo
 - git_commit: author, since, until, search, message, branch, repo, limit
-- ssa_log: module_name, synthesizer, level, tags, synthesis_id, workorder_id, work_order_id, search, message, since, start_time, until, end_time, limit, sort_order
+- instrument_log: instrument_type, module_name, synthesizer, instrument, level, tags, synthesis_id, workorder_id, work_order_id, plate_barcode, barcode, search, message, since, start_time, until, end_time, limit, sort_order
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -187,6 +187,26 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "commits about midscale" → search: "midscale", repo: "default"
      - "commits by dana in last 30 days" → author: "dana", since: "NOW() - INTERVAL '30 days'", repo: "default"
 
+8. Instrument logs (for instrument_log entity):
+   - Searches ALL Synthego-Brain instrument logs from ElasticSearch cluster
+   - Covers SSA synthesizers, Hamilton instruments, Tecan instruments, and all other lab modules
+   - IMPORTANT: Requires VPN connection for production ElasticSearch access
+   - Instrument types:
+     * "ssa" or "synthesizer" → SolidStateSynthesizerModule (RNA synthesis runs)
+     * "hamilton" → HamiltonInstrument (liquid handling, plate preparation)
+     * "tecan" → TecanInstrument (plate handling, processing)
+   - Date filters: since/start_time, until/end_time (accepts same formats as workflow dates)
+   - Message search: search or message filter (searches log message text)
+   - Level: ERROR, INFO, WARNING, DEBUG (case-insensitive)
+   - Tags: Log tags for filtering specific events
+   - Work order tracking: synthesis_id, workorder_id, work_order_id
+   - Plate tracking (Hamilton/Tecan): plate_barcode, barcode, linked_barcodes
+   - Examples:
+     - "SSA errors today" → instrument_type: "ssa", level: "ERROR", since: "now-24h"
+     - "Hamilton logs for plate ABC123" → instrument_type: "hamilton", plate_barcode: "ABC123"
+     - "synthesis logs for work order 578630" → workorder_id: 578630
+     - "all instrument errors this week" → level: "ERROR", since: "NOW() - INTERVAL '7 days'"
+     - "Tecan operations today" → instrument_type: "tecan", since: "now-24h"
 
 Question: {question}
 

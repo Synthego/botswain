@@ -1,0 +1,296 @@
+.PHONY: help install test test-verbose test-coverage lint format clean run migrate makemigrations shell createsuperuser
+.PHONY: docker-build docker-up docker-down docker-restart docker-logs docker-shell docker-test
+.PHONY: requirements freeze check staticfiles
+
+# Variables
+PYTHON := python
+VENV := venv
+VENV_BIN := $(VENV)/bin
+DJANGO_SETTINGS := botswain.settings.local
+TEST_SETTINGS := botswain.settings.test
+DOCKER_COMPOSE := docker-compose
+
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
+
+##@ General
+
+help: ## Display this help message
+	@echo "$(BLUE)Botswain - Natural Language Factory Query Assistant$(NC)"
+	@echo ""
+	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make $(CYAN)<target>$(NC)\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  $(CYAN)%-20s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(YELLOW)%s$(NC)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Setup & Installation
+
+install: ## Install all dependencies in virtual environment
+	@echo "$(GREEN)Installing dependencies...$(NC)"
+	$(PYTHON) -m venv $(VENV)
+	$(VENV_BIN)/pip install --upgrade pip
+	$(VENV_BIN)/pip install -r requirements.txt
+	@echo "$(GREEN)✓ Installation complete!$(NC)"
+	@echo "$(YELLOW)Run 'source venv/bin/activate' to activate the environment$(NC)"
+
+requirements: ## Install/update requirements
+	@echo "$(GREEN)Installing requirements...$(NC)"
+	$(VENV_BIN)/pip install -r requirements.txt
+
+freeze: ## Freeze current dependencies to requirements.txt
+	@echo "$(GREEN)Freezing dependencies...$(NC)"
+	$(VENV_BIN)/pip freeze > requirements.txt
+
+##@ Development Server
+
+run: ## Run development server (local)
+	@echo "$(GREEN)Starting Botswain development server...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py runserver 8002
+
+run-production: ## Run with production settings
+	@echo "$(GREEN)Starting Botswain in production mode...$(NC)"
+	DJANGO_SETTINGS_MODULE=botswain.settings.production $(VENV_BIN)/python manage.py runserver 8002
+
+##@ Database
+
+migrate: ## Run database migrations
+	@echo "$(GREEN)Running migrations...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py migrate
+
+makemigrations: ## Create new migrations
+	@echo "$(GREEN)Creating migrations...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py makemigrations
+
+migrate-test: ## Run migrations for test database
+	@echo "$(GREEN)Running test database migrations...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(TEST_SETTINGS) $(VENV_BIN)/python manage.py migrate
+
+shell: ## Open Django shell
+	@echo "$(GREEN)Opening Django shell...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py shell
+
+dbshell: ## Open database shell
+	@echo "$(GREEN)Opening database shell...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py dbshell
+
+createsuperuser: ## Create Django superuser
+	@echo "$(GREEN)Creating superuser...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py createsuperuser
+
+##@ Testing
+
+test: ## Run all tests
+	@echo "$(GREEN)Running test suite...$(NC)"
+	$(VENV_BIN)/pytest
+
+test-verbose: ## Run tests with verbose output
+	@echo "$(GREEN)Running test suite (verbose)...$(NC)"
+	$(VENV_BIN)/pytest -v
+
+test-coverage: ## Run tests with coverage report
+	@echo "$(GREEN)Running tests with coverage...$(NC)"
+	$(VENV_BIN)/pytest --cov=core --cov=api --cov-report=html --cov-report=term
+	@echo "$(YELLOW)Coverage report: htmlcov/index.html$(NC)"
+
+test-watch: ## Run tests in watch mode (requires pytest-watch)
+	@echo "$(GREEN)Running tests in watch mode...$(NC)"
+	$(VENV_BIN)/ptw
+
+test-failed: ## Re-run only failed tests
+	@echo "$(GREEN)Re-running failed tests...$(NC)"
+	$(VENV_BIN)/pytest --lf
+
+test-api: ## Run only API tests
+	@echo "$(GREEN)Running API tests...$(NC)"
+	$(VENV_BIN)/pytest tests/test_api_*.py -v
+
+test-core: ## Run only core tests
+	@echo "$(GREEN)Running core tests...$(NC)"
+	$(VENV_BIN)/pytest tests/test_*_*.py -v --ignore=tests/test_api_*.py
+
+test-unit: ## Run unit tests (non-Django)
+	@echo "$(GREEN)Running unit tests...$(NC)"
+	$(VENV_BIN)/pytest -m "not django_db" -v
+
+##@ Code Quality
+
+check: ## Run Django system checks
+	@echo "$(GREEN)Running Django checks...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py check
+
+lint: ## Run code linting (flake8, pylint)
+	@echo "$(GREEN)Running linters...$(NC)"
+	@if [ -f "$(VENV_BIN)/flake8" ]; then \
+		$(VENV_BIN)/flake8 core/ api/ --max-line-length=120 --exclude=migrations; \
+	else \
+		echo "$(YELLOW)flake8 not installed. Run: pip install flake8$(NC)"; \
+	fi
+	@if [ -f "$(VENV_BIN)/pylint" ]; then \
+		$(VENV_BIN)/pylint core/ api/ --disable=C0111,R0903; \
+	else \
+		echo "$(YELLOW)pylint not installed. Run: pip install pylint$(NC)"; \
+	fi
+
+format: ## Format code with black and isort
+	@echo "$(GREEN)Formatting code...$(NC)"
+	@if [ -f "$(VENV_BIN)/black" ]; then \
+		$(VENV_BIN)/black core/ api/ tests/ --line-length=120; \
+	else \
+		echo "$(YELLOW)black not installed. Run: pip install black$(NC)"; \
+	fi
+	@if [ -f "$(VENV_BIN)/isort" ]; then \
+		$(VENV_BIN)/isort core/ api/ tests/; \
+	else \
+		echo "$(YELLOW)isort not installed. Run: pip install isort$(NC)"; \
+	fi
+
+format-check: ## Check code formatting without making changes
+	@echo "$(GREEN)Checking code formatting...$(NC)"
+	@if [ -f "$(VENV_BIN)/black" ]; then \
+		$(VENV_BIN)/black core/ api/ tests/ --check --line-length=120; \
+	else \
+		echo "$(YELLOW)black not installed. Run: pip install black$(NC)"; \
+	fi
+
+type-check: ## Run mypy type checking
+	@echo "$(GREEN)Running type checks...$(NC)"
+	@if [ -f "$(VENV_BIN)/mypy" ]; then \
+		$(VENV_BIN)/mypy core/ api/ --ignore-missing-imports; \
+	else \
+		echo "$(YELLOW)mypy not installed. Run: pip install mypy$(NC)"; \
+	fi
+
+##@ Docker
+
+docker-build: ## Build Docker images
+	@echo "$(GREEN)Building Docker images...$(NC)"
+	$(DOCKER_COMPOSE) build
+
+docker-up: ## Start all Docker services
+	@echo "$(GREEN)Starting Docker services...$(NC)"
+	$(DOCKER_COMPOSE) up -d
+	@echo "$(GREEN)✓ Services started!$(NC)"
+	@echo "$(YELLOW)API available at: http://localhost:8002$(NC)"
+	@echo "$(YELLOW)Run 'make docker-logs' to view logs$(NC)"
+
+docker-down: ## Stop all Docker services
+	@echo "$(GREEN)Stopping Docker services...$(NC)"
+	$(DOCKER_COMPOSE) down
+
+docker-restart: ## Restart all Docker services
+	@echo "$(GREEN)Restarting Docker services...$(NC)"
+	$(DOCKER_COMPOSE) restart
+
+docker-logs: ## View Docker service logs
+	@echo "$(GREEN)Viewing Docker logs (Ctrl+C to exit)...$(NC)"
+	$(DOCKER_COMPOSE) logs -f
+
+docker-logs-web: ## View web service logs only
+	@echo "$(GREEN)Viewing web service logs (Ctrl+C to exit)...$(NC)"
+	$(DOCKER_COMPOSE) logs -f web
+
+docker-shell: ## Open shell in web container
+	@echo "$(GREEN)Opening shell in web container...$(NC)"
+	$(DOCKER_COMPOSE) exec web /bin/bash
+
+docker-django-shell: ## Open Django shell in web container
+	@echo "$(GREEN)Opening Django shell in web container...$(NC)"
+	$(DOCKER_COMPOSE) exec web python manage.py shell
+
+docker-migrate: ## Run migrations in Docker
+	@echo "$(GREEN)Running migrations in Docker...$(NC)"
+	$(DOCKER_COMPOSE) exec web python manage.py migrate
+
+docker-makemigrations: ## Create migrations in Docker
+	@echo "$(GREEN)Creating migrations in Docker...$(NC)"
+	$(DOCKER_COMPOSE) exec web python manage.py makemigrations
+
+docker-test: ## Run tests in Docker
+	@echo "$(GREEN)Running tests in Docker...$(NC)"
+	$(DOCKER_COMPOSE) exec web pytest
+
+docker-superuser: ## Create superuser in Docker
+	@echo "$(GREEN)Creating superuser in Docker...$(NC)"
+	$(DOCKER_COMPOSE) exec web python manage.py createsuperuser
+
+docker-ps: ## Show running Docker containers
+	@echo "$(GREEN)Docker containers:$(NC)"
+	$(DOCKER_COMPOSE) ps
+
+docker-clean: ## Remove all Docker containers and volumes
+	@echo "$(RED)Removing all Docker containers and volumes...$(NC)"
+	$(DOCKER_COMPOSE) down -v
+	@echo "$(GREEN)✓ Cleanup complete!$(NC)"
+
+##@ Utilities
+
+clean: ## Clean up Python cache files and test artifacts
+	@echo "$(GREEN)Cleaning up...$(NC)"
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete
+	find . -type f -name "*.pyo" -delete
+	find . -type f -name "*.coverage" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
+	rm -f test_db.sqlite3
+	rm -f .coverage
+	@echo "$(GREEN)✓ Cleanup complete!$(NC)"
+
+clean-all: clean docker-clean ## Clean everything including Docker
+
+staticfiles: ## Collect static files
+	@echo "$(GREEN)Collecting static files...$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py collectstatic --noinput
+
+show-urls: ## Show all URL patterns
+	@echo "$(GREEN)Registered URL patterns:$(NC)"
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python manage.py show_urls 2>/dev/null || \
+	DJANGO_SETTINGS_MODULE=$(DJANGO_SETTINGS) $(VENV_BIN)/python -c "from django.core.management import execute_from_command_line; import sys; sys.argv = ['manage.py', 'show_urls']; execute_from_command_line(sys.argv)" 2>/dev/null || \
+	echo "$(YELLOW)show_urls command not available. Install django-extensions: pip install django-extensions$(NC)"
+
+##@ Quick Start
+
+quickstart: install migrate ## Quick start: install dependencies and run migrations
+	@echo ""
+	@echo "$(GREEN)✓ Quick start complete!$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Next steps:$(NC)"
+	@echo "  1. Activate environment: source venv/bin/activate"
+	@echo "  2. Run server: make run"
+	@echo "  3. Test API: make test-api-call"
+	@echo ""
+
+quickstart-docker: docker-build docker-up docker-migrate ## Quick start with Docker
+	@echo ""
+	@echo "$(GREEN)✓ Docker quick start complete!$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Services running:$(NC)"
+	@echo "  • API: http://localhost:8002"
+	@echo "  • PostgreSQL: localhost:5433"
+	@echo "  • Redis: localhost:6380"
+	@echo ""
+	@echo "$(YELLOW)Useful commands:$(NC)"
+	@echo "  • View logs: make docker-logs"
+	@echo "  • Run tests: make docker-test"
+	@echo "  • Stop: make docker-down"
+	@echo ""
+
+##@ API Testing
+
+test-api-call: ## Test API with sample query
+	@echo "$(GREEN)Testing API endpoint...$(NC)"
+	@echo ""
+	@curl -X POST http://localhost:8002/api/query \
+		-H "Content-Type: application/json" \
+		-d '{"question": "What synthesizers are available?", "format": "json"}' \
+		-s | python -m json.tool || echo "$(RED)Error: API not responding. Is the server running?$(NC)"
+	@echo ""
+
+test-api-health: ## Check if API is responding
+	@echo "$(GREEN)Checking API health...$(NC)"
+	@curl -s http://localhost:8002/api/query -o /dev/null -w "%{http_code}" | \
+		grep -q "405" && echo "$(GREEN)✓ API is responding$(NC)" || \
+		echo "$(RED)✗ API is not responding$(NC)"
+

@@ -1,5 +1,7 @@
 """
-SSA (Solid State Synthesizer) Logs entity for querying ElasticSearch logs.
+Instrument Logs entity for querying all Synthego-Brain instrument logs from ElasticSearch.
+Covers SSA (synthesizers), Hamilton, Tecan, and all other instrument modules.
+
 Uses elasticsearch Python client for READ-ONLY access.
 
 SECURITY: Read-only access to ElasticSearch. Requires VPN for production cluster.
@@ -10,9 +12,15 @@ from datetime import datetime, timedelta
 from .base import BaseEntity
 
 
-class SSALogsEntity(BaseEntity):
+class InstrumentLogsEntity(BaseEntity):
     """
-    Queries SSA logs from ElasticSearch cluster.
+    Queries all Synthego-Brain instrument logs from ElasticSearch cluster.
+
+    Supports:
+    - SSA (Solid State Synthesizers): SolidStateSynthesizerModule-{id}
+    - Hamilton instruments: HamiltonInstrument-{id}
+    - Tecan instruments: TecanInstrument-{id}
+    - All other Synthego-Brain modules
 
     SECURITY RESTRICTIONS:
     - READ-ONLY access via elasticsearch client
@@ -20,8 +28,8 @@ class SSALogsEntity(BaseEntity):
     - Requires VPN for production cluster access
     """
 
-    name = "ssa_log"
-    description = "Solid State Synthesizer logs from ElasticSearch. Use for questions about synthesis runs, synthesizer errors, instrument status, synthesis duration, work orders."
+    name = "instrument_log"
+    description = "Synthego-Brain instrument logs from ElasticSearch. Covers SSA synthesizers, Hamilton, Tecan, and all lab instruments. Use for questions about synthesis runs, instrument errors, method executions, Hamilton/Tecan operations, synthesis duration, work orders, plate tracking."
 
     # ElasticSearch hosts (production cluster)
     ES_HOSTS = [
@@ -31,8 +39,16 @@ class SSALogsEntity(BaseEntity):
         'elasticsearch-04:9200'
     ]
 
-    # Index pattern for SSA logs
+    # Index pattern for instrument logs
     ES_INDEX = "logstash-*"
+
+    # Instrument type patterns
+    INSTRUMENT_TYPES = {
+        'ssa': 'SolidStateSynthesizerModule',
+        'synthesizer': 'SolidStateSynthesizerModule',
+        'hamilton': 'HamiltonInstrument',
+        'tecan': 'TecanInstrument'
+    }
 
     def _get_es_client(self):
         """
@@ -59,7 +75,7 @@ class SSALogsEntity(BaseEntity):
 
     def get_queryset(self, filters: Dict[str, Any] = None):
         """
-        Get SSA logs from ElasticSearch (READ-ONLY).
+        Get instrument logs from ElasticSearch (READ-ONLY).
 
         Returns a list of dicts (not a Django queryset) since ElasticSearch is an external service.
 
@@ -85,20 +101,32 @@ class SSALogsEntity(BaseEntity):
             for hit in response['hits']['hits']:
                 log_entry = hit['_source']
 
+                # Determine instrument type from module name
+                module_name = log_entry.get('modulename', '')
+                instrument_type = 'unknown'
+                if 'SolidStateSynthesizerModule' in module_name:
+                    instrument_type = 'SSA'
+                elif 'HamiltonInstrument' in module_name:
+                    instrument_type = 'Hamilton'
+                elif 'TecanInstrument' in module_name:
+                    instrument_type = 'Tecan'
+
                 # Extract key fields
                 logs.append({
                     'timestamp': log_entry.get('@timestamp'),
                     'level': log_entry.get('level'),
                     'logger': log_entry.get('logger'),
-                    'module_name': log_entry.get('modulename'),
+                    'module_name': module_name,
+                    'instrument_type': instrument_type,
                     'message': log_entry.get('msg'),
                     'tags': log_entry.get('tags', []),
                     'file': log_entry.get('file'),
                     'function': log_entry.get('function'),
                     'line': log_entry.get('line'),
-                    # Extract extra fields (synthesis_id, workorder_id, etc.)
+                    # Extract extra fields (synthesis_id, workorder_id, linked_plate_barcode, etc.)
                     'synthesis_id': log_entry.get('extra', {}).get('synthesis_id'),
                     'workorder_id': log_entry.get('extra', {}).get('workorder_id'),
+                    'linked_barcodes': log_entry.get('extra', {}).get('linked_plate_barcode', []),
                     'extra': log_entry.get('extra', {})
                 })
 
@@ -138,9 +166,18 @@ class SSALogsEntity(BaseEntity):
             })
             return query
 
-        # Module name filter
-        if 'module_name' in filters or 'synthesizer' in filters:
-            module = filters.get('module_name') or filters.get('synthesizer')
+        # Instrument type filter (ssa, hamilton, tecan)
+        if 'instrument_type' in filters:
+            inst_type = filters['instrument_type'].lower()
+            if inst_type in self.INSTRUMENT_TYPES:
+                pattern = self.INSTRUMENT_TYPES[inst_type]
+                query["query"]["bool"]["must"].append({
+                    "wildcard": {"modulename.raw": f"{pattern}*"}
+                })
+
+        # Module name filter (specific instrument)
+        if 'module_name' in filters or 'synthesizer' in filters or 'instrument' in filters:
+            module = filters.get('module_name') or filters.get('synthesizer') or filters.get('instrument')
             query["query"]["bool"]["must"].append({
                 "match": {"modulename": module}
             })
@@ -175,6 +212,13 @@ class SSALogsEntity(BaseEntity):
             wo_id = filters.get('workorder_id') or filters.get('work_order_id')
             query["query"]["bool"]["must"].append({
                 "match": {"extra.workorder_id": wo_id}
+            })
+
+        # Plate barcode filter (for Hamilton/Tecan)
+        if 'plate_barcode' in filters or 'barcode' in filters:
+            barcode = filters.get('plate_barcode') or filters.get('barcode')
+            query["query"]["bool"]["must"].append({
+                "match": {"extra.linked_plate_barcode": barcode}
             })
 
         # Message search filter
@@ -262,12 +306,13 @@ class SSALogsEntity(BaseEntity):
         return datetime.now()
 
     def get_attributes(self) -> List[str]:
-        """Available attributes for SSA logs"""
+        """Available attributes for instrument logs"""
         return [
             'timestamp',
             'level',
             'logger',
             'module_name',
+            'instrument_type',
             'message',
             'tags',
             'file',
@@ -275,6 +320,7 @@ class SSALogsEntity(BaseEntity):
             'line',
             'synthesis_id',
             'workorder_id',
+            'linked_barcodes',
             'extra'
         ]
 
@@ -283,13 +329,17 @@ class SSALogsEntity(BaseEntity):
         Validate that filters are safe and recognized.
         """
         valid_filters = {
+            'instrument_type',
             'module_name',
             'synthesizer',
+            'instrument',
             'level',
             'tags',
             'synthesis_id',
             'workorder_id',
             'work_order_id',
+            'plate_barcode',
+            'barcode',
             'search',
             'message',
             'since',
