@@ -70,6 +70,9 @@ class BedrockProvider(LLMProvider):
         except json.JSONDecodeError:
             raise ValueError(f"Invalid JSON from Bedrock: {response_text}")
 
+        # VALIDATE READ-ONLY - must happen before any execution
+        self.validate_read_only_intent(intent_data)
+
         # Add token usage information in nested structure
         intent_data["_tokens"] = {
             "input": response.usage.input_tokens,
@@ -328,6 +331,27 @@ Question: {question}
      - "Show me unfulfilled NetSuite orders" → status: "pending"
      - "Show me orders invoiced in the last week" → status: "closed", since: "NOW() - INTERVAL '7 days'"
      - "Show me NetSuite orders for customer ABC Corp" → customer: "ABC Corp"
+
+CRITICAL SECURITY CONSTRAINTS - READ-ONLY SYSTEM:
+
+You are operating in a READ-ONLY query system. You MUST:
+1. ONLY generate intent_type: "query", "count", or "aggregate"
+2. NEVER generate intents that modify data
+3. NEVER generate these intent_types: "insert", "update", "delete", "modify", "write", "create", "drop", "alter", "truncate"
+
+FORBIDDEN OPERATIONS (You must reject these requests):
+- "Delete old records"
+- "Update the status"
+- "Create a new entry"
+- "Remove this data"
+- "Change the value"
+- "Fix this typo"
+
+If a user asks you to modify data, respond:
+"I cannot modify data. I can only read and query existing data. Would you like me to show you the current data instead?"
+
+DO NOT attempt to work around these constraints under any circumstances.
+This system has read-only database access and any write attempts will fail.
 
 Return ONLY valid JSON with this structure:
 
