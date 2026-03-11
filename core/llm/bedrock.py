@@ -130,6 +130,8 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - ecs_service: service, environment, role, status, cluster
 - rds_database: database, service, environment, status, replica, include_metrics
 - netsuite_order: order_id, external_id, internal_id, netsuite_id, status, customer, customer_name, since, start_date, until, end_date, limit
+- kraken_workflow: query_type, workflow_name, work_order_id, hours_ago, days_ago, limit
+- sos_sequencing: query_type, hours_ago, status, sequencer, barcode, workflow_id, callback_status, source_order_reference, work_order_reference, min_ice_score, max_ice_score, min_phred_percent, limit
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -299,6 +301,64 @@ Question: {question}
      - "Show me unfulfilled NetSuite orders" → status: "pending"
      - "Show me orders invoiced in the last week" → status: "closed", since: "NOW() - INTERVAL '7 days'"
      - "Show me NetSuite orders for customer ABC Corp" → customer: "ABC Corp"
+
+13. Kraken workflows (for kraken_workflow entity):
+   - Queries Kraken workflow orchestration execution data
+   - Shows running workflows, workflow status, failed workflows, workflow statistics
+   - Query types (use "query_type" filter):
+     * "running" → Currently executing workflows with running tasks
+     * "failed" → Recent failed workflows with task failure details
+     * "status" → Workflow status with optional name/work order filters
+     * "statistics" → Aggregated success rates and durations
+   - Filters:
+     * query_type: running, failed, status, statistics (REQUIRED)
+     * workflow_name: Name of workflow (partial match, e.g., "RNA" matches "RNA Synthesis")
+     * work_order_id: Work order ID number (e.g., 578630)
+     * hours_ago: Time window for failed/status queries (default: 24)
+     * days_ago: Time window for statistics queries (default: 7)
+   - Returns: workflow execution data, task status, runtime info, failure details, success rates
+   - Examples:
+     - "Show me running workflows" → query_type: "running"
+     - "Failed workflows in the last hour" → query_type: "failed", hours_ago: 1
+     - "Workflow statistics for RNA synthesis" → query_type: "statistics", workflow_name: "RNA"
+     - "Status of workflows for work order 578630" → query_type: "status", work_order_id: 578630
+     - "Running lab automation workflows" → query_type: "running"
+     - "Failed workflows this week" → query_type: "failed", hours_ago: 168
+     - "Plating workflow statistics last 30 days" → query_type: "statistics", workflow_name: "Plating", days_ago: 30
+
+14. SOS sequencing (for sos_sequencing entity):
+   - Queries SOS sequencing orders and analysis results
+   - Shows sequencing orders, analysis status, ICE scores, quality metrics
+   - Query types (use "query_type" filter):
+     * "orders" → Sequencing orders with status and analysis info
+     * "analysis" → Analysis results with ICE/Lodestone scores
+     * "failed_orders" → Recent failed sequencing orders
+     * "failed_analysis" → Recent failed analysis results
+     * "quality" → Aggregated quality metrics and success rates
+     * "work_order" → Orders by BARB work order reference
+   - Filters:
+     * query_type: orders, analysis, failed_orders, failed_analysis, quality, work_order (REQUIRED)
+     * hours_ago: Time window (default: 168 hours = 7 days)
+     * status: Order status (CREATED, SUBMITTED, FAILED)
+     * sequencer: Sequencing vendor (ELIM, SEQUETECH)
+     * barcode: Plate barcode (e.g., PLT-12345)
+     * workflow_id: Kraken workflow ID
+     * callback_status: Workflow callback status (INCOMPLETE, COMPLETE, FAILED)
+     * source_order_reference: BARB work order reference (partial match)
+     * work_order_reference: BARB work order for work_order query type
+     * min_ice_score: Minimum ICE editing score (0-100)
+     * max_ice_score: Maximum ICE editing score (0-100)
+     * min_phred_percent: Minimum Phred quality percentage
+   - Returns: sequencing orders, analysis results, ICE scores, quality metrics, failure details
+   - Examples:
+     - "Show me recent sequencing orders" → query_type: "orders", hours_ago: 24
+     - "What's the sequencing status for WO-12345?" → query_type: "work_order", work_order_reference: "WO-12345"
+     - "Show me ICE analysis results below 50%" → query_type: "analysis", max_ice_score: 50
+     - "Any failed sequencing today?" → query_type: "failed_orders", hours_ago: 24
+     - "What's the overall sequencing quality this week?" → query_type: "quality", hours_ago: 168
+     - "Show me Sequetech orders from yesterday" → query_type: "orders", sequencer: "SEQUETECH", hours_ago: 24
+     - "Analysis results for plate PLT-45678" → query_type: "analysis", barcode: "PLT-45678"
+     - "Failed analysis this week" → query_type: "failed_analysis", hours_ago: 168
 
 Return ONLY valid JSON with this structure:
 

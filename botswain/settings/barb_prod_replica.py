@@ -12,6 +12,8 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 # - 'default': Botswain's own database (for QueryLog, audit data, etc.)
 # - 'barb': BARB production read-replica (READ-ONLY, for instrument queries)
 # - 'buckaneer': Buckaneer production primary (READ-ONLY, for NetSuite order queries)
+# - 'kraken': Kraken production primary (READ-ONLY, for workflow orchestration queries)
+# - 'sos': SOS production primary (READ-ONLY, for sequencing order queries)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -34,6 +36,28 @@ DATABASES = {
         'USER': 'buckaneer',
         'PASSWORD': os.environ.get('BUCKANEER_PASSWORD', ''),
         'HOST': 'buckaneer-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+        'PORT': '5432',
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
+    },
+    'kraken': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'kraken_prod',
+        'USER': 'readonlyuser',
+        'PASSWORD': os.environ.get('KRAKEN_READONLY_PASSWORD', ''),
+        'HOST': 'kraken-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+        'PORT': '5432',
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
+    },
+    'sos': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'sos_prod',
+        'USER': 'readonlyuser',
+        'PASSWORD': os.environ.get('SOS_READONLY_PASSWORD', ''),
+        'HOST': 'sos-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
         'PORT': '5432',
         'OPTIONS': {
             'connect_timeout': 10,
