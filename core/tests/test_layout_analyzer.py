@@ -61,3 +61,22 @@ class TestLayoutAnalyzer:
         assert 'data' in layout[1]
         assert 'columns' in layout[1]
         assert len(layout[1]['data']) == 10
+
+    def test_large_dataset_adds_pagination_hint(self):
+        """When count > 50, add pagination hint to summary."""
+        results = {
+            'count': 100,
+            'results': [
+                {'name': f'SSA-{i}', 'status': 'running'}
+                for i in range(100)
+            ],
+            'entity': 'synthesizer'
+        }
+        intent = {'entity': 'synthesizer', 'limit': 100}
+
+        layout = LayoutAnalyzer.analyze(results, intent)
+
+        assert len(layout) == 2
+        assert layout[0]['type'] == 'summary'
+        assert 'showing' in layout[0]['content'].lower() or 'limited' in layout[0]['content'].lower()
+        assert layout[1]['type'] == 'table'

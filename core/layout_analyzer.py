@@ -41,11 +41,18 @@ class LayoutAnalyzer:
             })
             return layout
 
-        # Medium dataset (5-50): summary + table
-        if count <= 50:
+        # Medium/large dataset (5+): summary + table
+        if count >= 5:
+            # Adjust summary for large datasets
+            limit = intent.get('limit', 100)
+            if count > 50:
+                summary_text = f'Found {count} {intent.get("entity", "items")} (showing first {min(limit, count)})'
+            else:
+                summary_text = f'Found {count} {intent.get("entity", "items")}'
+
             layout.append({
                 'type': 'summary',
-                'content': f'Found {count} {intent.get("entity", "items")}'
+                'content': summary_text
             })
 
             # Generate table columns from first result
