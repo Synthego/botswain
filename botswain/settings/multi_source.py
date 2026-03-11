@@ -1,7 +1,7 @@
 """
 Settings for connecting to multiple data sources:
 - BARB production read-replica
-- Buckaneer local database
+- Buckaneer production database (READ-ONLY via router)
 """
 from .base import *
 
@@ -11,7 +11,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 # Multi-database setup:
 # - 'default': Botswain's own database (for QueryLog, audit data, etc.)
 # - 'barb': BARB production read-replica (READ-ONLY)
-# - 'buckaneer': Buckaneer local database (READ-ONLY)
+# - 'buckaneer': Buckaneer production primary (READ-ONLY via router - no replica available)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -30,10 +30,11 @@ DATABASES = {
     },
     'buckaneer': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'buckaneer_local',
+        'NAME': 'buckaneer_prod',
         'USER': 'buckaneer',
-        'HOST': 'localhost',
-        'PORT': '5446',
+        'PASSWORD': 'BUCKANEER_PASSWORD_HERE',
+        'HOST': 'buckaneer-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+        'PORT': '5432',
         'OPTIONS': {
             'connect_timeout': 10,
         },
