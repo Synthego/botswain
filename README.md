@@ -6,7 +6,8 @@ Botswain is a Django-based microservice that enables natural language queries ac
 
 - **Natural Language Interface**: Ask questions in plain English across 11+ data sources
 - **Multi-Database Support**: Query BARB (factory operations), Buckaneer (e-commerce), NetSuite, AWS infrastructure
-- **Command-Line Interface**: Interactive CLI for quick queries
+- **Redis Caching**: 99%+ faster repeat queries with intelligent per-entity TTL configuration
+- **Command-Line Interface**: Interactive CLI for quick queries with cache indicators
 - **AWS Bedrock Integration**: Production-ready LLM integration using Claude Sonnet 4.5
 - **Multi-Entity Queries**: Automatically combine data from multiple sources in a single query
 - **Cost Tracking**: Automatic token usage and cost tracking for all queries
@@ -32,10 +33,8 @@ Botswain provides unified natural language access to 11 different data sources:
 | **Service Logs** | Application logs (CloudWatch) | "BARB errors today", "Buckaneer 500 errors", "Celery task failures" |
 | **ECS Services** | Container service status (AWS) | "Is BARB running?", "Show production services", "BARB worker status" |
 | **RDS Databases** | Database operational status (AWS) | "Is BARB database available?", "Show BARB replicas", "Database connections" |
-
 ## 🏗️ Architecture
 
-```
 User Question
     ↓
 AWS Bedrock (Claude Sonnet 4.5)
@@ -46,6 +45,8 @@ Query Planner (detects multi-entity queries)
     ↓
 Safety Validator
     ↓
+Redis Cache Check (per-entity TTL: 30s - 1hr)
+    ↓ (cache miss)
 Query Executor → Entity Registry
     ↓                    ↓
 Multi-Database Access:  External APIs:
@@ -55,10 +56,11 @@ Multi-Database Access:  External APIs:
                        - CloudWatch (service logs)
                        - AWS ECS/RDS (infrastructure)
     ↓
+Cache Result → Redis (with TTL)
+    ↓
 LLM Response Formatter
     ↓
 Natural Language Response + Audit Log
-```
 
 ### Multi-Database Architecture
 
@@ -73,6 +75,7 @@ All database access is **READ-ONLY** via dedicated read-only users or read repli
 ## 🚀 Quick Start
 
 ### Prerequisites
+- Redis (optional, for caching - dramatically improves performance)
 
 - Python 3.9+
 - AWS credentials configured (for Bedrock, CloudWatch, ECS, RDS queries)
@@ -85,41 +88,34 @@ All database access is **READ-ONLY** via dedicated read-only users or read repli
 ```bash
 git clone https://github.com/Synthego/botswain.git
 cd botswain
-```
 
 2. **Create virtual environment:**
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
 
 3. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
-```
 
 4. **Configure environment variables:**
 ```bash
 cp .env.example .env
 # Edit .env and add your credentials (see Configuration section)
-```
 
 5. **Run migrations:**
 ```bash
 python manage.py migrate
-```
 
 6. **Start development server:**
 ```bash
 python manage.py runserver --settings=botswain.settings.barb_prod_replica 8002
-```
 
 7. **Test the API:**
 ```bash
 curl -X POST http://localhost:8002/api/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What synthesizers are available?"}'
-```
 
 ## ⚙️ Configuration
 
@@ -136,7 +132,6 @@ BUCKANEER_PASSWORD=your_password_here
 # AWS Bedrock (uses AWS credentials from aws configure or env vars)
 AWS_REGION=us-west-2
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
-```
 
 **⚠️ SECURITY**: Never commit `.env` to git. It contains production credentials.
 
@@ -154,7 +149,6 @@ Choose the appropriate settings module based on your use case:
 **Recommended for production queries:**
 ```bash
 python manage.py runserver --settings=botswain.settings.barb_prod_replica 8002
-```
 
 ### AWS Configuration
 
@@ -173,7 +167,43 @@ aws configure
 export AWS_ACCESS_KEY_ID=your_access_key
 export AWS_SECRET_ACCESS_KEY=your_secret_key
 export AWS_DEFAULT_REGION=us-west-2
+
+### Redis Caching
+
+Botswain uses Redis for query result caching, providing 99%+ performance improvement for repeat queries.
+
+**Start Redis (Docker):**
+```bash
+docker run -d --name botswain-redis -p 6379:6379 redis:7-alpine
+
+**Configure in `.env`:**
+```bash
+REDIS_URL=redis://localhost:6379/0
+
+**Per-Entity TTL Configuration:**
+- **Real-time data** (30-60s): Synthesizers, Instruments, Workflows, ECS Services
+- **Semi-static data** (5-10min): Orders, NetSuite Orders, GitHub Issues, RDS Databases
+- **Historical data** (1hr): Git Commits
+
+**Cache Controls:**
+```bash
+# Use cache (default)
+./botswain-cli.py "Show my commits"
+
+# Bypass cache (force fresh data)
+./botswain-cli.py "Show my commits" --no-cache
+
+# HTTP header bypass
+curl -H "X-Botswain-Cache-Bypass: 1" http://localhost:8002/api/query
 ```
+
+**Cache indicators in CLI:**
+```
+Cache:          ✓ Cached result  (when data from Redis)
+Execution Time: 2ms              (vs 1250ms uncached)
+```
+
+See `CACHING.md` for detailed documentation including cache invalidation, monitoring, and troubleshooting.
 
 ## 📖 Usage Examples
 
@@ -210,7 +240,6 @@ curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json"
 # Infrastructure (AWS)
 curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
   -d '{"question": "Is BARB running?"}'
-```
 
 ### Multi-Entity Queries
 
@@ -228,7 +257,6 @@ curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json"
 # Infrastructure + Logs correlation
 curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json" \
   -d '{"question": "Show me BARB service status and recent errors"}'
-```
 
 ### CLI Usage
 
@@ -244,101 +272,78 @@ curl -X POST http://localhost:8002/api/query -H "Content-Type: application/json"
 
 # Debug mode
 ./botswain-cli.py "Show BARB errors today" --debug
-```
 
 ## 🔍 Query Capabilities by Entity
 
 ### Synthesizers (BARB)
 **Filters**: `status`, `available`, `barcode`
-```
 "Show available synthesizers"
 "Which SSA is offline?"
 "Show synthesizer 1717"
-```
 
 ### Instruments (BARB)
 **Filters**: `status`, `factory`, `barcode`, `instrument_type`, `type`
-```
 "List Hamilton instruments in Fremont"
 "Show offline instruments"
 "All Tecan instruments"
-```
 
 ### Workflows (BARB)
 **Filters**: `status`, `template`, `template_name`, `work_order_id`, `workflow_id`, `created_after`, `created_before`
-```
 "Show workflows from last 30 days"
 "Find work order 578630"
 "RNA synthesis workflows this week"
-```
 
 ### Orders (Buckaneer)
 **Filters**: `status`, `factory`, `bigcommerce_id`, `order_id`, `created_after`, `created_before`, `email`
-```
 "Show recent orders"
 "Orders shipped this week"
 "Orders for dana@synthego.com"
-```
 
 ### NetSuite Orders (Buckaneer)
 **Filters**: `order_id`, `external_id`, `internal_id`, `netsuite_id`, `status`, `customer`, `customer_name`, `since`, `until`
-```
 "Show unfulfilled NetSuite orders"
 "NetSuite orders for ABC Corp"
 "Orders invoiced in the last week"
-```
 
 ### GitHub Issues
 **Filters**: `state`, `label`, `assignee`, `author`, `mention`, `type`, `created_after`, `updated_after`, `search`, `repo`
-```
 "My open issues"
 "Show barb PRs"
 "Issues assigned to dana"
 "Issues with bug label in buckaneer"
-```
 
 ### Git Commits
 **Filters**: `author`, `since`, `until`, `search`, `message`, `branch`, `repo`
-```
 "My recent commits"
 "Commits about midscale"
 "Changes in barb last week"
-```
 
 ### Instrument Logs (ElasticSearch)
 **Filters**: `instrument_type`, `module_name`, `synthesizer`, `instrument`, `level`, `tags`, `synthesis_id`, `workorder_id`, `plate_barcode`, `search`, `since`, `until`
 **Requires**: VPN connection
-```
 "SSA errors today"
 "Hamilton logs for plate ABC123"
 "Logs for synthesis 578630"
 "Tecan operations this week"
-```
 
 ### Service Logs (CloudWatch)
 **Filters**: `service`, `environment`, `level`, `role`, `search`, `since`, `until`
 **Retention**: 30 days (prod), 14 days (stage), 7 days (qa/dev)
-```
 "BARB errors today"
 "Buckaneer 500 errors in the last hour"
 "Celery task failures this week"
-```
 
 ### ECS Services (AWS)
 **Filters**: `service`, `environment`, `role`, `status`, `cluster`
-```
 "Is BARB running?"
 "Show production services"
 "What's the status of BARB workers?"
-```
 
 ### RDS Databases (AWS)
 **Filters**: `database`, `service`, `environment`, `status`, `replica`, `include_metrics`
-```
 "Is BARB database available?"
 "Show all production databases"
 "Show BARB read replicas"
-```
 
 ## 💰 Cost Tracking
 
@@ -355,10 +360,8 @@ python manage.py token_usage_report --start-date 2026-03-01 --end-date 2026-03-1
 
 # Filter by user
 python manage.py token_usage_report --user dana
-```
 
 **Sample Output:**
-```
 Token Usage Report
 Date Range: 2026-03-01 to 2026-03-10
 Total Queries: 1,247
@@ -376,7 +379,6 @@ Estimated Costs:
 Average per Query:
   Tokens:             340
   Cost:               $0.003
-```
 
 ### Pricing (Claude Sonnet 4.5 via Bedrock)
 - Input: $3.00 per million tokens
@@ -384,7 +386,6 @@ Average per Query:
 
 ## 🗂️ Project Structure
 
-```
 botswain/
 ├── api/                           # REST API endpoints
 │   ├── views.py                  # QueryAPIView endpoint
@@ -410,6 +411,7 @@ botswain/
 │   │   ├── base.py              # BaseEntity abstract class
 │   │   └── registry.py          # Entity registry
 │   ├── models.py                 # Django models (QueryLog, etc.)
+│   ├── cache.py                   # Redis caching with per-entity TTL
 │   ├── audit.py                  # Audit logging
 │   ├── query_executor.py         # Query execution engine
 │   ├── query_planner.py          # Multi-entity query orchestration
@@ -432,7 +434,6 @@ botswain/
 ├── .env.example                  # Environment variable template
 ├── requirements.txt              # Python dependencies
 └── README.md                     # This file
-```
 
 ## 🔒 Security
 
@@ -483,7 +484,6 @@ pytest tests/test_query_executor.py
 
 # Run with verbose output
 pytest -v
-```
 
 ## 🚢 Deployment
 
@@ -518,7 +518,6 @@ BUCKANEER_PASSWORD=your-production-password
 # AWS
 AWS_REGION=us-west-2
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
-```
 
 ## 🐛 Troubleshooting
 
@@ -551,7 +550,7 @@ BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 - Run `python manage.py token_usage_report` to analyze usage
 - Consider using Claude Haiku 3.5 for simpler queries
 - Adjust `BEDROCK_MAX_INTENT_TOKENS` and `BEDROCK_MAX_RESPONSE_TOKENS`
-- Implement caching for frequent queries
+- Enable Redis caching (see CACHING.md)
 
 ### Getting Help
 
@@ -574,9 +573,7 @@ BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 - [x] Token usage and cost tracking
 - [x] Automatic query recovery
 - [x] Environment variable credential management
-
-**In Progress:**
-- [ ] Redis caching for frequent queries
+- [x] Redis caching with per-entity TTL (30s - 1hr)
 - [ ] Query result pagination
 - [ ] Slack integration
 
@@ -610,3 +607,4 @@ Built with:
 - ElasticSearch
 - GitHub CLI
 - AWS SDK (boto3)
+- Redis
