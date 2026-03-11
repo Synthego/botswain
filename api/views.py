@@ -122,19 +122,19 @@ class QueryAPIView(APIView):
             registry.register(OrderEntity())
             registry.register(NetSuiteOrderEntity())
 
-        # Check if we have Kraken database configured
-        has_kraken = 'kraken' in settings.DATABASES
-        if has_kraken:
-            from core.semantic_layer.entities.kraken_workflows import KrakenWorkflowEntity
-
-            registry.register(KrakenWorkflowEntity())
-
-        # Check if we have SOS database configured
-        has_sos = 'sos' in settings.DATABASES
-        if has_sos:
-            from core.semantic_layer.entities.sos_sequencing import SOSSequencingEntity
-
-            registry.register(SOSSequencingEntity())
+        # DISABLED: Kraken and SOS integrations (databases not accessible)
+        # To re-enable: uncomment database config in settings and these registrations
+        # # Check if we have Kraken database configured
+        # has_kraken = 'kraken' in settings.DATABASES
+        # if has_kraken:
+        #     from core.semantic_layer.entities.kraken_workflows import KrakenWorkflowEntity
+        #     registry.register(KrakenWorkflowEntity())
+        #
+        # # Check if we have SOS database configured
+        # has_sos = 'sos' in settings.DATABASES
+        # if has_sos:
+        #     from core.semantic_layer.entities.sos_sequencing import SOSSequencingEntity
+        #     registry.register(SOSSequencingEntity())
 
         # Check if GitHub CLI is available
         import shutil

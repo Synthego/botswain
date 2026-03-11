@@ -41,28 +41,31 @@ DATABASES = {
             'connect_timeout': 10,
         },
     },
-    'kraken': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'kraken_prod',
-        'USER': 'readonlyuser',
-        'PASSWORD': os.environ.get('KRAKEN_READONLY_PASSWORD', ''),
-        'HOST': 'kraken-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
-        'PORT': '5432',
-        'OPTIONS': {
-            'connect_timeout': 10,
-        },
-    },
-    'sos': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'sos_prod',
-        'USER': 'readonlyuser',
-        'PASSWORD': os.environ.get('SOS_READONLY_PASSWORD', ''),
-        'HOST': 'sos-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
-        'PORT': '5432',
-        'OPTIONS': {
-            'connect_timeout': 10,
-        },
-    }
+    # DISABLED: Kraken and SOS databases not accessible (not in AWS RDS)
+    # These services appear to run on internal .ad.synthego.com infrastructure
+    # To re-enable: uncomment these sections and verify network connectivity
+    # 'kraken': {
+    #     'ENGINE': 'django.db.backends.postgresql',
+    #     'NAME': 'kraken',
+    #     'USER': 'kraken',
+    #     'PASSWORD': os.environ.get('KRAKEN_DB_PASSWORD', ''),
+    #     'HOST': 'kraken-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+    #     'PORT': '5432',
+    #     'OPTIONS': {
+    #         'connect_timeout': 10,
+    #     },
+    # },
+    # 'sos': {
+    #     'ENGINE': 'django.db.backends.postgresql',
+    #     'NAME': 'sos',
+    #     'USER': 'readonlyuser',
+    #     'PASSWORD': os.environ.get('SOS_DB_READONLY_PASSWORD', ''),
+    #     'HOST': 'sos-prod-pg-01.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+    #     'PORT': '5432',
+    #     'OPTIONS': {
+    #         'connect_timeout': 10,
+    #     },
+    # }
 }
 
 # Database router: BARB models go to 'barb', Botswain models go to 'default'
