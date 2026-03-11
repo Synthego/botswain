@@ -11,6 +11,7 @@ from core.query_executor import QueryExecutor
 from core.audit import AuditLogger
 from core.query_recovery import QueryRecovery
 from core.query_planner import QueryPlanner
+from core.layout_analyzer import LayoutAnalyzer
 from .serializers import QueryRequestSerializer
 
 class QueryAPIView(APIView):
@@ -244,6 +245,9 @@ class QueryAPIView(APIView):
         executor = QueryExecutor(registry=registry)
         query_results = executor.execute(intent, user=user)
 
+        # Generate layout specification
+        layout = LayoutAnalyzer.analyze(query_results, intent)
+
         # Format response (pass intent for limit transparency)
         formatted_response = llm_provider.format_response(
             query_results,
@@ -276,6 +280,7 @@ class QueryAPIView(APIView):
             'response': response_text,
             'intent': intent,
             'results': query_results,
+            'layout': layout,
             'cached': False,
             'format_tokens': format_tokens
         }
