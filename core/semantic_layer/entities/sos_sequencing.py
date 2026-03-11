@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import logging
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ class SOSSequencingEntity(BaseEntity):
         params.append(filters.get('limit', 100))
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, params)
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -256,6 +258,7 @@ class SOSSequencingEntity(BaseEntity):
         params.append(filters.get('limit', 100))
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, params)
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -328,6 +331,7 @@ class SOSSequencingEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, [cutoff_time, filters.get('limit', 50)])
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -388,6 +392,7 @@ class SOSSequencingEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, [cutoff_time, filters.get('limit', 50)])
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -460,6 +465,7 @@ class SOSSequencingEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, [cutoff_time])
             row = cursor.fetchone()
             columns = [col[0] for col in cursor.description]
@@ -515,6 +521,7 @@ class SOSSequencingEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, [f"%{work_order_ref}%", filters.get('limit', 20)])
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -537,6 +544,7 @@ class SOSSequencingEntity(BaseEntity):
                         FROM analysis_analysis
                         WHERE run_id = %s
                     """
+                    SQLValidator.validate(analysis_sql)
                     cursor.execute(analysis_sql, [result_dict['latest_analysis_run_id']])
                     analysis_row = cursor.fetchone()
                     if analysis_row:

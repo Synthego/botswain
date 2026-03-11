@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import logging
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class KrakenWorkflowEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql)
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -114,6 +116,7 @@ class KrakenWorkflowEntity(BaseEntity):
                       AND ts.status = 'RUNNING'
                     ORDER BY te.started_at
                 """
+                SQLValidator.validate(task_sql)
                 cursor.execute(task_sql, [workflow_dict['workflow_id'], workflow_dict['runtime_id']])
                 task_columns = [col[0] for col in cursor.description]
                 task_rows = cursor.fetchall()
@@ -182,6 +185,7 @@ class KrakenWorkflowEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, params)
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -202,6 +206,7 @@ class KrakenWorkflowEntity(BaseEntity):
                       AND te.runtime_id = %s
                     GROUP BY ts.status
                 """
+                SQLValidator.validate(status_sql)
                 cursor.execute(status_sql, [workflow_dict['workflow_id'], workflow_dict['runtime_id']])
                 status_rows = cursor.fetchall()
 
@@ -262,6 +267,7 @@ class KrakenWorkflowEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, [cutoff_time])
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -319,6 +325,7 @@ class KrakenWorkflowEntity(BaseEntity):
         """
 
         with connection.cursor() as cursor:
+            SQLValidator.validate(sql)
             cursor.execute(sql, params)
             columns = [col[0] for col in cursor.description]
             rows = cursor.fetchall()
@@ -338,6 +345,7 @@ class KrakenWorkflowEntity(BaseEntity):
                       AND r.created_at >= %s
                       AND ts.status = 'COMPLETED'
                 """
+                SQLValidator.validate(completed_sql)
                 cursor.execute(completed_sql, [stats_dict['workflow_id'], cutoff_time])
                 completed_runs = cursor.fetchone()[0]
 
@@ -352,6 +360,7 @@ class KrakenWorkflowEntity(BaseEntity):
                       AND r.created_at >= %s
                       AND ts.status = 'FAILED'
                 """
+                SQLValidator.validate(failed_sql)
                 cursor.execute(failed_sql, [stats_dict['workflow_id'], cutoff_time])
                 failed_runs = cursor.fetchone()[0]
 
