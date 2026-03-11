@@ -1,10 +1,13 @@
 """AWS Bedrock LLM provider implementation using anthropic[bedrock] SDK"""
 import json
+import logging
 import re
 from typing import Dict, Any, Optional
 from anthropic import AnthropicBedrock
 from django.conf import settings
 from .provider import LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class BedrockProvider(LLMProvider):
@@ -105,6 +108,32 @@ class BedrockProvider(LLMProvider):
                 'total': response.usage.input_tokens + response.usage.output_tokens
             }
         }
+
+    def validate_read_only_intent(self, intent: Dict[str, Any]) -> None:
+        """
+        Validate that intent is read-only.
+
+        Raises:
+            ValueError: If intent attempts write operation
+        """
+        intent_type = intent.get('intent_type', '').lower()
+
+        # Whitelist of allowed intent types
+        ALLOWED_INTENT_TYPES = {'query', 'count', 'aggregate'}
+
+        if intent_type not in ALLOWED_INTENT_TYPES:
+            logger.warning(
+                f"Intent validation blocked: intent_type '{intent_type}' not allowed",
+                extra={
+                    'intent_type': intent_type,
+                    'entity': intent.get('entity'),
+                    'allowed_types': list(ALLOWED_INTENT_TYPES)
+                }
+            )
+            raise ValueError(
+                f"Read-only violation: intent_type '{intent_type}' not allowed. "
+                f"Only {ALLOWED_INTENT_TYPES} are permitted."
+            )
 
     def _build_intent_prompt(self, question: str, context: Dict[str, Any]) -> str:
         """Build prompt for intent parsing"""
