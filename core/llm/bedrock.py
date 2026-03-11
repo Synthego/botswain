@@ -126,6 +126,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - github_issue: state, label, assignee, author, mention, type, created_after, updated_after, search, repo
 - git_commit: author, since, until, search, message, branch, repo, limit
 - instrument_log: instrument_type, module_name, synthesizer, instrument, level, tags, synthesis_id, workorder_id, work_order_id, plate_barcode, barcode, search, message, since, start_time, until, end_time, limit, sort_order
+- service_log: service, environment, level, role, search, message, since, start_time, until, end_time, limit
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -207,6 +208,28 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "synthesis logs for work order 578630" → workorder_id: 578630
      - "all instrument errors this week" → level: "ERROR", since: "NOW() - INTERVAL '7 days'"
      - "Tecan operations today" → instrument_type: "tecan", since: "now-24h"
+
+9. Service logs (for service_log entity):
+   - Searches Django/FastAPI/gRPC service logs from AWS CloudWatch Logs
+   - Covers BARB, Buckaneer, Kraken, SOS, Hook, Line, and other web services
+   - IMPORTANT: Requires AWS credentials (IAM or SSO)
+   - RETENTION: Production 30 days, Stage 14 days, QA/Dev 7 days (queries outside retention window return no results)
+   - Services:
+     * "barb" or "barb-prod" → BARB production Django web server and Celery workers
+     * "buckaneer" or "buckaneer-prod" → Buckaneer e-commerce backend
+     * "kraken" or "kraken-prod" → Kraken workflow orchestration
+     * "sos" or "sos-prod" → SOS sequencing coordination
+     * Can specify environment: "barb-stage", "buckaneer-qa", etc.
+   - Level: ERROR, WARNING, INFO, DEBUG (case-insensitive)
+   - Role: web (Django/FastAPI server), worker (Celery worker), beat (Celery scheduler)
+   - Date filters: since/start_time, until/end_time (accepts same formats as workflow dates)
+   - Message search: search or message filter (searches log message text)
+   - Examples:
+     - "BARB errors today" → service: "barb", level: "ERROR", since: "24h"
+     - "Buckaneer 500 errors in the last hour" → service: "buckaneer", search: "500", since: "1h"
+     - "Celery task failures in BARB this week" → service: "barb", role: "worker", search: "Task.*failed", since: "7d"
+     - "Kraken errors in stage environment" → service: "kraken", environment: "stage", level: "ERROR", since: "24h"
+     - "Django exceptions in any service today" → search: "Traceback", since: "24h"
 
 Question: {question}
 
