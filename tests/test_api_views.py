@@ -328,3 +328,301 @@ class TestPaginationParameterNormalization:
 
         assert offset == 200  # (3-1) * 100
         assert limit == 100
+
+
+class TestAPIPaginationIntegration:
+    """Test end-to-end pagination through API"""
+
+    @pytest.mark.django_db
+    def test_api_accepts_page_based_parameters(self):
+        """API should accept page and page_size parameters"""
+        from rest_framework.test import APIClient
+        from django.contrib.auth.models import User
+        from unittest.mock import patch, Mock
+
+        client = APIClient()
+        user = User.objects.create_user(username='test@synthego.com')
+        client.force_authenticate(user=user)
+
+        # Mock LLM provider
+        with patch('api.views.LLMProviderFactory.get_default') as mock_factory:
+            mock_provider = Mock()
+            mock_provider.parse_intent.return_value = {
+                'entity': 'synthesizer',
+                'intent_type': 'query',
+                'filters': {},
+                '_tokens': {'input': 10, 'output': 5, 'total': 15}
+            }
+            mock_provider.format_response.return_value = {
+                'text': "Test response",
+                'tokens': {'input': 5, 'output': 3, 'total': 8}
+            }
+            mock_provider.model = 'test-model'
+            mock_factory.return_value = mock_provider
+
+            # Mock QueryPlanner
+            with patch('api.views.QueryPlanner') as mock_planner_class:
+                mock_planner = Mock()
+                mock_planner.execute_multi_entity_query.return_value = (False, None)
+                mock_planner_class.return_value = mock_planner
+
+                # Mock QueryExecutor
+                with patch('api.views.QueryExecutor') as mock_executor_class:
+                    mock_executor = Mock()
+                    mock_executor.execute.return_value = {
+                        'success': True,
+                        'entity': 'synthesizer',
+                        'results': [],
+                        'count': 0,
+                        'execution_time_ms': 10,
+                        'pagination': {
+                            'offset': 25,
+                            'limit': 25,
+                            'current_page': 2,
+                            'page_size': 25,
+                            'has_next': False,
+                            'has_previous': True,
+                            'estimated_total': 0,
+                            'estimated_total_pages': 1
+                        }
+                    }
+                    mock_executor_class.return_value = mock_executor
+
+                    response = client.post('/api/query', {
+                        'question': 'Show orders',
+                        'page': 2,
+                        'page_size': 25
+                    }, format='json')
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert 'pagination' in data
+                    assert data['pagination']['current_page'] == 2
+                    assert data['pagination']['page_size'] == 25
+                    assert data['pagination']['offset'] == 25
+                    assert data['pagination']['limit'] == 25
+
+                    # Verify executor was called with correct pagination params
+                    mock_executor.execute.assert_called_once()
+                    call_kwargs = mock_executor.execute.call_args.kwargs
+                    assert call_kwargs['offset'] == 25
+                    assert call_kwargs['limit'] == 25
+
+    @pytest.mark.django_db
+    def test_api_accepts_offset_limit_parameters(self):
+        """API should accept offset and limit parameters"""
+        from rest_framework.test import APIClient
+        from django.contrib.auth.models import User
+        from unittest.mock import patch, Mock
+
+        client = APIClient()
+        user = User.objects.create_user(username='test@synthego.com')
+        client.force_authenticate(user=user)
+
+        # Mock LLM provider
+        with patch('api.views.LLMProviderFactory.get_default') as mock_factory:
+            mock_provider = Mock()
+            mock_provider.parse_intent.return_value = {
+                'entity': 'synthesizer',
+                'intent_type': 'query',
+                'filters': {},
+                '_tokens': {'input': 10, 'output': 5, 'total': 15}
+            }
+            mock_provider.format_response.return_value = {
+                'text': "Test response",
+                'tokens': {'input': 5, 'output': 3, 'total': 8}
+            }
+            mock_provider.model = 'test-model'
+            mock_factory.return_value = mock_provider
+
+            # Mock QueryPlanner
+            with patch('api.views.QueryPlanner') as mock_planner_class:
+                mock_planner = Mock()
+                mock_planner.execute_multi_entity_query.return_value = (False, None)
+                mock_planner_class.return_value = mock_planner
+
+                # Mock QueryExecutor
+                with patch('api.views.QueryExecutor') as mock_executor_class:
+                    mock_executor = Mock()
+                    mock_executor.execute.return_value = {
+                        'success': True,
+                        'entity': 'synthesizer',
+                        'results': [],
+                        'count': 0,
+                        'execution_time_ms': 10,
+                        'pagination': {
+                            'offset': 50,
+                            'limit': 30,
+                            'current_page': 2,
+                            'page_size': 30,
+                            'has_next': False,
+                            'has_previous': True,
+                            'estimated_total': 0,
+                            'estimated_total_pages': 1
+                        }
+                    }
+                    mock_executor_class.return_value = mock_executor
+
+                    response = client.post('/api/query', {
+                        'question': 'Show orders',
+                        'offset': 50,
+                        'limit': 30
+                    }, format='json')
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert 'pagination' in data
+                    assert data['pagination']['offset'] == 50
+                    assert data['pagination']['limit'] == 30
+
+                    # Verify executor was called with correct pagination params
+                    mock_executor.execute.assert_called_once()
+                    call_kwargs = mock_executor.execute.call_args.kwargs
+                    assert call_kwargs['offset'] == 50
+                    assert call_kwargs['limit'] == 30
+
+    @pytest.mark.django_db
+    def test_api_returns_pagination_metadata(self):
+        """API response should include full pagination metadata"""
+        from rest_framework.test import APIClient
+        from django.contrib.auth.models import User
+        from unittest.mock import patch, Mock
+
+        client = APIClient()
+        user = User.objects.create_user(username='test@synthego.com')
+        client.force_authenticate(user=user)
+
+        # Mock LLM provider
+        with patch('api.views.LLMProviderFactory.get_default') as mock_factory:
+            mock_provider = Mock()
+            mock_provider.parse_intent.return_value = {
+                'entity': 'synthesizer',
+                'intent_type': 'query',
+                'filters': {},
+                '_tokens': {'input': 10, 'output': 5, 'total': 15}
+            }
+            mock_provider.format_response.return_value = {
+                'text': "Test response",
+                'tokens': {'input': 5, 'output': 3, 'total': 8}
+            }
+            mock_provider.model = 'test-model'
+            mock_factory.return_value = mock_provider
+
+            # Mock QueryPlanner
+            with patch('api.views.QueryPlanner') as mock_planner_class:
+                mock_planner = Mock()
+                mock_planner.execute_multi_entity_query.return_value = (False, None)
+                mock_planner_class.return_value = mock_planner
+
+                # Mock QueryExecutor
+                with patch('api.views.QueryExecutor') as mock_executor_class:
+                    mock_executor = Mock()
+                    mock_executor.execute.return_value = {
+                        'success': True,
+                        'entity': 'synthesizer',
+                        'results': [],
+                        'count': 0,
+                        'execution_time_ms': 10,
+                        'pagination': {
+                            'offset': 0,
+                            'limit': 50,
+                            'current_page': 1,
+                            'page_size': 50,
+                            'has_next': False,
+                            'has_previous': False,
+                            'estimated_total': 100,
+                            'estimated_total_pages': 2
+                        }
+                    }
+                    mock_executor_class.return_value = mock_executor
+
+                    response = client.post('/api/query', {
+                        'question': 'Show orders',
+                        'page': 1,
+                        'page_size': 50
+                    }, format='json')
+
+                    assert response.status_code == 200
+                    data = response.json()
+
+                    # Verify all pagination fields present
+                    pagination = data['pagination']
+                    assert 'current_page' in pagination
+                    assert 'page_size' in pagination
+                    assert 'offset' in pagination
+                    assert 'limit' in pagination
+                    assert 'has_next' in pagination
+                    assert 'has_previous' in pagination
+                    assert 'estimated_total' in pagination
+                    assert 'estimated_total_pages' in pagination
+
+    @pytest.mark.django_db
+    def test_api_defaults_to_page_1_when_no_params(self):
+        """API should default to page 1 when no pagination params provided"""
+        from rest_framework.test import APIClient
+        from django.contrib.auth.models import User
+        from unittest.mock import patch, Mock
+
+        client = APIClient()
+        user = User.objects.create_user(username='test@synthego.com')
+        client.force_authenticate(user=user)
+
+        # Mock LLM provider
+        with patch('api.views.LLMProviderFactory.get_default') as mock_factory:
+            mock_provider = Mock()
+            mock_provider.parse_intent.return_value = {
+                'entity': 'synthesizer',
+                'intent_type': 'query',
+                'filters': {},
+                '_tokens': {'input': 10, 'output': 5, 'total': 15}
+            }
+            mock_provider.format_response.return_value = {
+                'text': "Test response",
+                'tokens': {'input': 5, 'output': 3, 'total': 8}
+            }
+            mock_provider.model = 'test-model'
+            mock_factory.return_value = mock_provider
+
+            # Mock QueryPlanner
+            with patch('api.views.QueryPlanner') as mock_planner_class:
+                mock_planner = Mock()
+                mock_planner.execute_multi_entity_query.return_value = (False, None)
+                mock_planner_class.return_value = mock_planner
+
+                # Mock QueryExecutor
+                with patch('api.views.QueryExecutor') as mock_executor_class:
+                    mock_executor = Mock()
+                    mock_executor.execute.return_value = {
+                        'success': True,
+                        'entity': 'synthesizer',
+                        'results': [],
+                        'count': 0,
+                        'execution_time_ms': 10,
+                        'pagination': {
+                            'offset': 0,
+                            'limit': 100,
+                            'current_page': 1,
+                            'page_size': 100,
+                            'has_next': False,
+                            'has_previous': False,
+                            'estimated_total': 0,
+                            'estimated_total_pages': 1
+                        }
+                    }
+                    mock_executor_class.return_value = mock_executor
+
+                    response = client.post('/api/query', {
+                        'question': 'Show orders'
+                    }, format='json')
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data['pagination']['current_page'] == 1
+                    assert data['pagination']['offset'] == 0
+                    assert data['pagination']['has_previous'] is False
+
+                    # Verify executor was called with default pagination params
+                    mock_executor.execute.assert_called_once()
+                    call_kwargs = mock_executor.execute.call_args.kwargs
+                    assert call_kwargs['offset'] == 0
+                    assert call_kwargs['limit'] == 100

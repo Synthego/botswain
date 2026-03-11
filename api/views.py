@@ -57,23 +57,27 @@ class QueryAPIView(APIView):
         format_type = serializer.validated_data.get('format', 'natural')
         override_limit = serializer.validated_data.get('override_limit')
 
-        # Try executing the query, with automatic recovery on certain errors
+        # Normalize pagination parameters
+        offset, limit = self._normalize_pagination_params(serializer.validated_data)
+
+        # Try executing the query with pagination
         result = self._execute_query_with_recovery(
             question=question,
             override_limit=override_limit,
-            user=request.user.username if request.user.is_authenticated else 'anonymous'
+            user=request.user.username if request.user.is_authenticated else 'anonymous',
+            offset=offset,
+            limit=limit
         )
 
         return result
 
-    def _execute_query_with_recovery(self, question: str, override_limit: int, user: str):
-        """
-        Execute query with automatic error recovery.
-
-        If query fails with a recoverable error, simplify the question and retry.
-        """
+    def _execute_query_with_recovery(self, question: str, override_limit: int, user: str,
+                                      offset: int = 0, limit: int = 100):
+        """Execute query with automatic error recovery and pagination."""
         try:
-            return self._execute_query(question, override_limit, user, is_retry=False)
+            return self._execute_query(question, override_limit, user,
+                                        offset=offset, limit=limit,
+                                        is_retry=False)
 
         except (ValueError, FieldError, Exception) as e:
             error_message = str(e)
@@ -90,6 +94,8 @@ class QueryAPIView(APIView):
                         simplified_question,
                         override_limit,
                         user,
+                        offset=offset,
+                        limit=limit,
                         is_retry=True,
                         original_question=question
                     )
@@ -117,8 +123,10 @@ class QueryAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST if isinstance(e, (ValueError, FieldError)) else status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
-    def _execute_query(self, question: str, override_limit: int, user: str, is_retry: bool = False, original_question: str = None):
-        """Execute a single query attempt"""
+    def _execute_query(self, question: str, override_limit: int, user: str,
+                       offset: int = 0, limit: int = 100,
+                       is_retry: bool = False, original_question: str = None):
+        """Execute a single query attempt with pagination support"""
         # Initialize components
         registry = EntityRegistry()
 
@@ -263,13 +271,13 @@ class QueryAPIView(APIView):
             'entities': registry.get_entity_descriptions()
         })
 
-        # Apply limit override if provided
+        # Apply limit override if provided (backward compatibility)
         if override_limit is not None:
-            intent['limit'] = override_limit
+            limit = override_limit
 
-        # Execute query
+        # Execute query with pagination
         executor = QueryExecutor(registry=registry)
-        query_results = executor.execute(intent, user=user)
+        query_results = executor.execute(intent, user=user, offset=offset, limit=limit)
 
         # Generate layout specification
         layout = LayoutAnalyzer.analyze(query_results, intent)
@@ -308,7 +316,8 @@ class QueryAPIView(APIView):
             'results': query_results,
             'layout': layout,
             'cached': False,
-            'format_tokens': format_tokens
+            'format_tokens': format_tokens,
+            'pagination': query_results.get('pagination', {})
         }
 
         # Add recovery metadata if this was a retry
