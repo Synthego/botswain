@@ -25,37 +25,29 @@ class QueryCache:
     """
 
     @staticmethod
-    def get_cache_key(intent: Dict[str, Any], user: str) -> str:
+    def get_cache_key(intent: Dict[str, Any], user: str,
+                      offset: int = 0, limit: int = 100) -> str:
         """
-        Generate deterministic cache key from intent and user.
+        Generate cache key for query including pagination parameters.
 
         Args:
-            intent: Structured intent dict (entity, filters, attributes, etc.)
-            user: Username for cache isolation
+            intent: Query intent dict
+            user: Username
+            offset: Pagination offset
+            limit: Pagination limit
 
         Returns:
             Cache key string
         """
-        # Create canonical representation for hashing
-        cache_data = {
-            'entity': intent.get('entity'),
-            'intent_type': intent.get('intent_type', 'query'),
-            'attributes': sorted(intent.get('attributes', [])),
-            'filters': QueryCache._sort_dict(intent.get('filters', {})),
-            'sort': intent.get('sort'),
-            'limit': intent.get('limit'),
-            'aggregation_function': intent.get('aggregation_function'),
-            'group_by': intent.get('group_by'),
-            'user': user,
-        }
-
-        # Hash the canonical representation
-        cache_str = json.dumps(cache_data, sort_keys=True)
-        cache_hash = hashlib.sha256(cache_str.encode()).hexdigest()[:16]
-
-        # Generate key with entity prefix for debugging
         entity = intent.get('entity', 'unknown')
-        return f"query:{entity}:{cache_hash}"
+        filters = intent.get('filters', {})
+
+        # Create stable hash of filters
+        filters_str = json.dumps(filters, sort_keys=True)
+        filters_hash = hashlib.sha256(filters_str.encode()).hexdigest()[:16]
+
+        # Include pagination in cache key
+        return f"query:{entity}:{filters_hash}:{offset}:{limit}:{user}"
 
     @staticmethod
     def _sort_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -82,18 +74,21 @@ class QueryCache:
         )
 
     @staticmethod
-    def get(intent: Dict[str, Any], user: str) -> Optional[Dict[str, Any]]:
+    def get(intent: Dict[str, Any], user: str,
+            offset: int = 0, limit: int = 100) -> Optional[Dict[str, Any]]:
         """
-        Get cached query result.
+        Get cached query result including pagination.
 
         Args:
-            intent: Query intent
+            intent: Query intent dict
             user: Username
+            offset: Pagination offset
+            limit: Pagination limit
 
         Returns:
-            Cached result dict or None if cache miss
+            Cached result or None
         """
-        cache_key = QueryCache.get_cache_key(intent, user)
+        cache_key = QueryCache.get_cache_key(intent, user, offset, limit)
         entity = intent.get('entity', 'unknown')
 
         try:
@@ -111,19 +106,19 @@ class QueryCache:
             return None
 
     @staticmethod
-    def set(intent: Dict[str, Any], user: str, result: Dict[str, Any]) -> bool:
+    def set(intent: Dict[str, Any], user: str, result: Dict[str, Any],
+            offset: int = 0, limit: int = 100) -> None:
         """
-        Cache query result with entity-specific TTL.
+        Cache query result with pagination.
 
         Args:
-            intent: Query intent
+            intent: Query intent dict
             user: Username
             result: Query result to cache
-
-        Returns:
-            True if cached successfully, False otherwise
+            offset: Pagination offset
+            limit: Pagination limit
         """
-        cache_key = QueryCache.get_cache_key(intent, user)
+        cache_key = QueryCache.get_cache_key(intent, user, offset, limit)
         entity = intent.get('entity', 'unknown')
         ttl = QueryCache.get_ttl(entity)
 
