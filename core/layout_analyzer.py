@@ -43,12 +43,28 @@ class LayoutAnalyzer:
 
         # Medium/large dataset (5+): summary + table
         if count >= 5:
-            # Adjust summary for large datasets
-            limit = intent.get('limit', 100)
-            if count > 50:
-                summary_text = f'Found {count} {intent.get("entity", "items")} (showing first {min(limit, count)})'
+            entity_name = intent.get('entity', 'items')
+
+            # Use pagination metadata if available
+            pagination = results.get('pagination')
+
+            if pagination:
+                # Build summary with pagination info
+                estimated_total = pagination['estimated_total']
+                start = pagination['offset'] + 1
+                end = pagination['offset'] + count
+
+                # Format total (could be string "100+" or int)
+                total_str = str(estimated_total)
+
+                summary_text = f'Found {total_str} {entity_name} (showing results {start}-{end})'
             else:
-                summary_text = f'Found {count} {intent.get("entity", "items")}'
+                # Fallback for non-paginated responses (backward compatibility)
+                limit = intent.get('limit', 100)
+                if count > 50:
+                    summary_text = f'Found {count} {entity_name} (showing first {min(limit, count)})'
+                else:
+                    summary_text = f'Found {count} {entity_name}'
 
             layout.append({
                 'type': 'summary',
