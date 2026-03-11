@@ -3,6 +3,7 @@ Settings for connecting to multiple data sources:
 - BARB production read-replica
 - Buckaneer production database (READ-ONLY via router)
 """
+import os
 from .base import *
 
 DEBUG = True
@@ -21,7 +22,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'barb',
         'USER': 'readonlyuser',
-        'PASSWORD': 'BARB_READONLY_PASSWORD_HERE',
+        'PASSWORD': os.environ.get('BARB_READONLY_PASSWORD', ''),
         'HOST': 'barb-prod-pg-replica-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
         'PORT': '5432',
         'OPTIONS': {
@@ -32,7 +33,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'buckaneer_prod',
         'USER': 'buckaneer',
-        'PASSWORD': 'BUCKANEER_PASSWORD_HERE',
+        'PASSWORD': os.environ.get('BUCKANEER_PASSWORD', ''),
         'HOST': 'buckaneer-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
         'PORT': '5432',
         'OPTIONS': {

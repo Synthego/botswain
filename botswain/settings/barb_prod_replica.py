@@ -2,6 +2,7 @@
 Settings for connecting to BARB production read-replica.
 Safe read-only access to production data.
 """
+import os
 from .base import *
 
 DEBUG = True  # Keep debug on for local development
@@ -10,6 +11,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 # Multi-database setup:
 # - 'default': Botswain's own database (for QueryLog, audit data, etc.)
 # - 'barb': BARB production read-replica (READ-ONLY, for instrument queries)
+# - 'buckaneer': Buckaneer production primary (READ-ONLY, for NetSuite order queries)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -19,8 +21,19 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'barb',
         'USER': 'readonlyuser',
-        'PASSWORD': 'BARB_READONLY_PASSWORD_HERE',
+        'PASSWORD': os.environ.get('BARB_READONLY_PASSWORD', ''),
         'HOST': 'barb-prod-pg-replica-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
+        'PORT': '5432',
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
+    },
+    'buckaneer': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'buckaneer_prod',
+        'USER': 'buckaneer',
+        'PASSWORD': os.environ.get('BUCKANEER_PASSWORD', ''),
+        'HOST': 'buckaneer-prod-pg-0.cb7xtwywa7y5.us-west-2.rds.amazonaws.com',
         'PORT': '5432',
         'OPTIONS': {
             'connect_timeout': 10,

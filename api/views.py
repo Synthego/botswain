@@ -117,8 +117,10 @@ class QueryAPIView(APIView):
         has_buckaneer = 'buckaneer' in settings.DATABASES
         if has_buckaneer:
             from core.semantic_layer.entities.order_buckaneer import OrderEntity
+            from core.semantic_layer.entities.netsuite_orders import NetSuiteOrderEntity
 
             registry.register(OrderEntity())
+            registry.register(NetSuiteOrderEntity())
 
         # Check if GitHub CLI is available
         import shutil

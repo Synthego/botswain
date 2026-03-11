@@ -129,6 +129,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - service_log: service, environment, level, role, search, message, since, start_time, until, end_time, limit
 - ecs_service: service, environment, role, status, cluster
 - rds_database: database, service, environment, status, replica, include_metrics
+- netsuite_order: order_id, external_id, internal_id, netsuite_id, status, customer, customer_name, since, start_date, until, end_date, limit
 
 Filter mapping rules (CRITICAL - follow these exactly):
 
@@ -275,6 +276,29 @@ Filter mapping rules (CRITICAL - follow these exactly):
      - "Show me all databases in stage environment" → environment: "stage"
 
 Question: {question}
+
+12. NetSuite orders (for netsuite_order entity):
+   - Queries NetSuite sales orders cached in Buckaneer database
+   - Shows order sync status between Buckaneer and NetSuite
+   - IMPORTANT: Queries cached data (not real-time NetSuite API)
+   - Order Status values:
+     * "pending" → Pending Fulfillment (order placed, not shipped)
+     * "fulfilled" → Pending Billing (shipped, not invoiced)
+     * "billed" → Partially Billed
+     * "closed" → Closed (fully invoiced)
+   - Filters:
+     * order_id or external_id: Buckaneer order ID
+     * internal_id or netsuite_id: NetSuite internal ID
+     * status: pending, fulfilled, billed, closed
+     * customer or customer_name: Search by customer name
+   - Date filters: since, until (order creation date)
+   - Returns: order totals, customer info, fulfillment status, invoice status, NetSuite IDs
+   - Examples:
+     - "Show me recent NetSuite orders" → (default: last 30 days)
+     - "What's the NetSuite status of order 12345?" → order_id: 12345
+     - "Show me unfulfilled NetSuite orders" → status: "pending"
+     - "Show me orders invoiced in the last week" → status: "closed", since: "NOW() - INTERVAL '7 days'"
+     - "Show me NetSuite orders for customer ABC Corp" → customer: "ABC Corp"
 
 Return ONLY valid JSON with this structure:
 {{
