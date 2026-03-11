@@ -4,6 +4,7 @@ Works with all instrument types in BARB.
 """
 from typing import Dict, Any, List
 from .base import BaseEntity
+from core.sql_validator import SQLValidator
 
 
 class InstrumentEntity(BaseEntity):
@@ -74,6 +75,7 @@ class InstrumentEntity(BaseEntity):
         query += " ORDER BY b.barcode"
 
         with connections['barb'].cursor() as cursor:
+            SQLValidator.validate(query)
             cursor.execute(query, params)
             columns = [col[0] for col in cursor.description]
             results = [
