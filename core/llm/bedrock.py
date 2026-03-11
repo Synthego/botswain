@@ -125,6 +125,7 @@ VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - order: status, factory, bigcommerce_id, order_id, created_after, created_before, email
 - github_issue: state, label, assignee, author, mention, type, created_after, updated_after, search, repo
 - git_commit: author, since, until, search, message, branch, repo, limit
+- ssa_log: module_name, synthesizer, level, tags, synthesis_id, workorder_id, work_order_id, search, message, since, start_time, until, end_time, limit, sort_order
 
 Filter mapping rules (CRITICAL - follow these exactly):
 

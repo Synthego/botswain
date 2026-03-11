@@ -134,6 +134,14 @@ class QueryAPIView(APIView):
             from core.semantic_layer.entities.git_commits import GitCommitsEntity
 
             registry.register(GitCommitsEntity())
+        
+        # Check if elasticsearch package is available
+        try:
+            import elasticsearch
+            from core.semantic_layer.entities.ssa_logs import SSALogsEntity
+            registry.register(SSALogsEntity())
+        except ImportError:
+            pass  # elasticsearch package not installed
 
         # Initialize LLM provider
 
