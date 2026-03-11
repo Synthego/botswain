@@ -33,4 +33,12 @@ class LayoutAnalyzer:
             })
             return layout
 
+        # Small dataset (< 5): summary only
+        if count < 5:
+            layout.append({
+                'type': 'summary',
+                'content': f'Found {count} {intent.get("entity", "items")}'
+            })
+            return layout
+
         return layout
