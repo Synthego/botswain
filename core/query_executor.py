@@ -2,25 +2,38 @@ import time
 from typing import Dict, Any, List
 from .semantic_layer.registry import EntityRegistry
 from .safety import SafetyValidator
+from .cache import QueryCache
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class QueryExecutor:
-    """Executes queries safely with validation and programmatic aggregation"""
+    """Executes queries safely with validation, programmatic aggregation, and Redis caching"""
 
-    def __init__(self, registry: EntityRegistry = None):
+    def __init__(self, registry: EntityRegistry = None, use_cache: bool = True):
         self.registry = registry or EntityRegistry()
+        self.use_cache = use_cache
 
-    def execute(self, intent: Dict[str, Any], user: str) -> Dict[str, Any]:
+    def execute(self, intent: Dict[str, Any], user: str, bypass_cache: bool = False) -> Dict[str, Any]:
         """
-        Execute query based on structured intent.
+        Execute query based on structured intent with Redis caching.
 
         Args:
             intent: Structured intent from IntentParser
-            user: Username for audit logging
+            user: Username for audit logging and cache isolation
+            bypass_cache: If True, skip cache and fetch fresh data
 
         Returns:
             Query results with metadata and optional aggregations
         """
+        # Check cache first (unless bypassed)
+        if self.use_cache and not bypass_cache:
+            cached_result = QueryCache.get(intent, user)
+            if cached_result is not None:
+                logger.info(f"Returning cached result for {intent.get('entity')}")
+                return cached_result
+
         start_time = time.time()
 
         # Validate intent safety
@@ -108,6 +121,10 @@ class QueryExecutor:
             # For aggregate queries, calculate sum, avg, min, max
             aggregations = self._calculate_aggregations(results, intent)
             response['aggregations'] = aggregations
+
+        # Cache the result (unless caching is disabled)
+        if self.use_cache and not bypass_cache:
+            QueryCache.set(intent, user, response)
 
         return response
 

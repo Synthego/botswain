@@ -91,3 +91,40 @@ BEDROCK_MAX_INTENT_TOKENS = int(os.environ.get('BEDROCK_MAX_INTENT_TOKENS', '500
 BEDROCK_MAX_RESPONSE_TOKENS = int(os.environ.get('BEDROCK_MAX_RESPONSE_TOKENS', '1000'))
 BEDROCK_AWS_REGION = os.environ.get('AWS_REGION', 'us-west-2')
 BEDROCK_TIMEOUT = float(os.environ.get('BEDROCK_TIMEOUT', '30.0'))
+
+# Redis Cache Configuration
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+        'KEY_PREFIX': 'botswain',
+        'TIMEOUT': 300,  # Default 5 minutes
+    }
+}
+
+# Per-Entity Cache TTL Configuration (in seconds)
+ENTITY_CACHE_TTL = {
+    # Real-time data - short TTL
+    'synthesizer': 30,        # Synthesizer status changes frequently
+    'instrument': 30,         # Instrument status changes frequently
+    'workflow': 60,           # Workflow execution status
+    'ecs_service': 60,        # ECS service deployment status
+
+    # Semi-static data - medium TTL
+    'order': 300,             # Orders don't change often once placed (5 min)
+    'netsuite_order': 600,    # NetSuite sync data (10 min)
+    'github_issue': 300,      # GitHub issues (5 min)
+    'rds_database': 300,      # RDS metrics update periodically (5 min)
+
+    # Static/historical data - long TTL
+    'git_commit': 3600,       # Git history doesn't change (1 hour)
+
+    # Disabled entities (for future use)
+    'kraken_workflow': 60,    # When enabled: workflow status
+    'sos_sequencing': 300,    # When enabled: sequencing orders (5 min)
+}
+
+# Cache bypass for fresh data
+CACHE_BYPASS_HEADER = 'X-Botswain-Cache-Bypass'  # Set to '1' to bypass cache
