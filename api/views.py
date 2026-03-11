@@ -19,6 +19,32 @@ class QueryAPIView(APIView):
 
     permission_classes = [AllowAny]  # TODO: Change to IsAuthenticated
 
+    def _normalize_pagination_params(self, validated_data: dict) -> tuple[int, int]:
+        """
+        Normalize pagination parameters to offset/limit.
+
+        Accepts both page-based (page, page_size) and offset-based (offset, limit) parameters.
+        Priority: offset/limit takes precedence over page/page_size.
+
+        Args:
+            validated_data: Validated request data from serializer
+
+        Returns:
+            Tuple of (offset, limit)
+        """
+        # Priority: offset/limit takes precedence
+        if 'offset' in validated_data or 'limit' in validated_data:
+            offset = validated_data.get('offset', 0)
+            limit = validated_data.get('limit', 100)
+        else:
+            # Convert page/page_size to offset/limit
+            page = validated_data.get('page', 1)
+            page_size = validated_data.get('page_size', 100)
+            offset = (page - 1) * page_size
+            limit = page_size
+
+        return offset, limit
+
     def post(self, request):
         serializer = QueryRequestSerializer(data=request.data)
         if not serializer.is_valid():
