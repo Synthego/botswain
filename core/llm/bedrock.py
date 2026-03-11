@@ -154,12 +154,18 @@ Filter mapping rules (CRITICAL - follow these exactly):
    - SECURITY: Only Synthego organization repos allowed (e.g., "Synthego/barb")
    - State: "open", "closed", or "all"
    - Type: "pr" for pull requests only
-   - Repo: Must be "Synthego/repo-name" format
+   - Repo: Can be single repo "Synthego/barb" or comma-separated list "Synthego/barb,Synthego/buckaneer"
+   - Repo inference rules:
+     * If question mentions specific project (barb, buckaneer, kraken, etc.) → use that repo
+     * If question is general ("my issues", "assigned to X") → use "default" to search key repos
+     * Available repos: barb, buckaneer, kraken, galleon, catamaran, hook, line, sos, mazu, crab
    - Examples:
-     - "open issues" → state: "open"
+     - "open issues" → state: "open", repo: "default"
+     - "my open issues" → state: "open", assignee: "danajanezic", repo: "default"
      - "closed PRs in barb repo" → state: "closed", type: "pr", repo: "Synthego/barb"
-     - "issues assigned to bob" → assignee: "bob"
-     - "issues with bug label" → label: "bug"
+     - "issues assigned to bob" → assignee: "bob", repo: "default"
+     - "issues with bug label" → label: "bug", repo: "default"
+     - "barb issues about midscale" → search: "midscale", repo: "Synthego/barb"
    - IMPORTANT: Non-Synthego repos will be rejected
 
 Question: {question}

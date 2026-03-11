@@ -87,6 +87,17 @@ class GitHubIssuesEntity(BaseEntity):
             pass
         return ""
 
+    # Default repos to search when no specific repo is mentioned
+    DEFAULT_REPOS = [
+        "Synthego/barb",
+        "Synthego/buckaneer",
+        "Synthego/kraken",
+        "Synthego/galleon",
+        "Synthego/hook",
+        "Synthego/line",
+        "Synthego/sos",
+    ]
+
     def get_queryset(self, filters: Dict[str, Any] = None):
         """
         Get issues from GitHub using gh CLI (READ-ONLY).
@@ -95,18 +106,53 @@ class GitHubIssuesEntity(BaseEntity):
 
         SECURITY: All operations are read-only. No modifications to GitHub data.
         """
-        # Determine which repo to query
-        repo = None
+        # Determine which repo(s) to query
+        repos = []
         if filters and 'repo' in filters:
-            repo = filters['repo']
-        else:
-            repo = self._get_current_repo()
+            repo_value = filters['repo']
 
-        # SECURITY: Validate repo is from Synthego organization
-        if not repo or not self._validate_repo(repo):
-            # If no valid Synthego repo, return empty results with warning
+            # Handle "default" keyword - search across key repos
+            if repo_value == "default":
+                repos = self.DEFAULT_REPOS
+            # Handle comma-separated list
+            elif ',' in repo_value:
+                repos = [r.strip() for r in repo_value.split(',')]
+            else:
+                repos = [repo_value]
+        else:
+            # No repo specified - try to detect current repo
+            current_repo = self._get_current_repo()
+            if current_repo:
+                repos = [current_repo]
+            else:
+                # Fall back to default repos
+                repos = self.DEFAULT_REPOS
+
+        # SECURITY: Validate all repos are from Synthego organization
+        valid_repos = [r for r in repos if self._validate_repo(r)]
+        if not valid_repos:
+            # If no valid Synthego repos, return empty results
             return []
 
+        # Query each repo and combine results
+        all_issues = []
+        for repo in valid_repos:
+            issues = self._query_single_repo(repo, filters)
+            all_issues.extend(issues)
+
+        return all_issues
+
+    def _query_single_repo(self, repo: str, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+        """
+        Query a single repository for issues.
+
+        Args:
+            repo: Repository in format "owner/repo"
+            filters: Query filters
+
+        Returns:
+            List of issue dicts
+        """
         # Build gh command (READ-ONLY operation)
         cmd = ["gh", "issue", "list", "--json",
                "number,title,state,author,labels,assignees,createdAt,updatedAt,closedAt,url,body",
@@ -149,6 +195,10 @@ class GitHubIssuesEntity(BaseEntity):
             )
 
             issues = json.loads(result.stdout)
+            
+            # Add repo information to each issue for multi-repo queries
+            for issue in issues:
+                issue['repo'] = repo
 
             # Apply additional filters that gh doesn't support directly
             if filters:
@@ -236,7 +286,8 @@ class GitHubIssuesEntity(BaseEntity):
             'updatedAt',
             'closedAt',
             'url',
-            'body'
+            'body',
+            'repo'
         ]
 
     def validate_filters(self, filters: Dict[str, Any]) -> bool:
@@ -264,6 +315,18 @@ class GitHubIssuesEntity(BaseEntity):
 
         # If repo is specified, validate it's Synthego
         if 'repo' in filters:
-            return self._validate_repo(filters['repo'])
+            repo_value = filters['repo']
+
+            # "default" keyword is always valid
+            if repo_value == "default":
+                return True
+
+            # Handle comma-separated list
+            if ',' in repo_value:
+                repos = [r.strip() for r in repo_value.split(',')]
+                return all(self._validate_repo(r) for r in repos)
+
+            # Single repo
+            return self._validate_repo(repo_value)
 
         return True
