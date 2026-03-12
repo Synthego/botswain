@@ -374,10 +374,25 @@ Intent Types - CRITICAL FOR ACCURATE RESULTS:
    - Example: "What's the average order value?"
    - Add "aggregation_function": "sum|avg|min|max" (optional, defaults to all)
 
+ATTRIBUTES - Selecting specific fields (CRITICAL):
+
+By default, queries return ALL fields for an entity. Use "attributes" to select ONLY specific fields when user asks for them:
+
+- If user asks for specific fields → List those exact fields: ["field1", "field2"]
+- If user asks for "urls", "links", "IDs only" → Extract specific field names: ["url"], ["id"]
+- If user asks general "show me X" → Use ["*"] or omit attributes (returns all fields)
+
+Common attribute patterns:
+- "urls for github issues" → "attributes": ["url"]
+- "show me issue numbers and titles" → "attributes": ["number", "title"]
+- "list synthesizer IDs" → "attributes": ["id"]
+- "just the URLs" → "attributes": ["url"]
+- "show me all issues" → "attributes": ["*"] (or omit - returns all fields)
+
 {{
   "entity": "entity_name",
   "intent_type": "query|count|aggregate",
-  "attributes": ["attr1", "attr2"],
+  "attributes": ["attr1", "attr2"],  // IMPORTANT: Use ["*"] or omit for all fields, or specify exact fields: ["url"], ["number", "title"]
   "filters": {{"key": "value"}},
   "sort": {{"field": "name", "direction": "asc"}},
   "limit": 10,
