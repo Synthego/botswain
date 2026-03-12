@@ -6,6 +6,8 @@ Usage:
     ./botswain-cli.py "What synthesizers are available?"
     ./botswain-cli.py "Show me online instruments" --format json
     ./botswain-cli.py "List all synthesizers" --url http://localhost:8002
+    ./botswain-cli.py "Show orders" --page 2 --page-size 25
+    ./botswain-cli.py "Show orders" --offset 50 --limit 25
 """
 
 import argparse
@@ -23,6 +25,8 @@ Examples:
   %(prog)s "What synthesizers are available?"
   %(prog)s "Show me online instruments" --format json
   %(prog)s "List all synthesizers" --url http://production:8002
+  %(prog)s "Show orders" --page 2 --page-size 25
+  %(prog)s "Show orders" --offset 50 --limit 25
         """
     )
 
@@ -80,6 +84,31 @@ Examples:
         help='Skip interactive prompts (auto-accept limit removal)'
     )
 
+    # Pagination parameters
+    parser.add_argument(
+        '--page',
+        type=int,
+        help='Page number (1-indexed, default: 1)'
+    )
+
+    parser.add_argument(
+        '--page-size',
+        type=int,
+        help='Results per page (default: 100, max: 1000)'
+    )
+
+    parser.add_argument(
+        '--offset',
+        type=int,
+        help='Number of results to skip (default: 0)'
+    )
+
+    parser.add_argument(
+        '--limit',
+        type=int,
+        help='Maximum results to return (default: 100, max: 1000)'
+    )
+
     args = parser.parse_args()
 
     # Build initial request to get intent
@@ -89,6 +118,16 @@ Examples:
         'format': args.format,
         'use_cache': not args.no_cache
     }
+
+    # Add pagination parameters if provided
+    if args.page is not None:
+        payload['page'] = args.page
+    if args.page_size is not None:
+        payload['page_size'] = args.page_size
+    if args.offset is not None:
+        payload['offset'] = args.offset
+    if args.limit is not None:
+        payload['limit'] = args.limit
 
     if args.debug:
         print(f"[DEBUG] API URL: {api_url}", file=sys.stderr)
@@ -206,6 +245,19 @@ def display_response(data, debug=False, verbose=False):
 
         if data.get('cached'):
             print("Cache:          ✓ Cached result")
+
+        # Pagination info
+        if 'pagination' in data:
+            pagination = data['pagination']
+            print("─" * 60)
+            print("Pagination:")
+            print(f"  Page:           {pagination.get('current_page', 1)} of {pagination.get('estimated_total_pages', '?')}")
+            print(f"  Results:        {pagination.get('offset', 0) + 1}-{pagination.get('offset', 0) + results.get('count', 0)}")
+            print(f"  Total:          {pagination.get('estimated_total', '?')}")
+            if pagination.get('has_previous'):
+                print(f"  Previous:       --page {pagination.get('previous_page')}")
+            if pagination.get('has_next'):
+                print(f"  Next:           --page {pagination.get('next_page')}")
 
         print()
 
