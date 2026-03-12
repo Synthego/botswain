@@ -32,11 +32,21 @@ class QueryExecutor:
         Returns:
             Query results with metadata and pagination
         """
-        # Check cache first - include pagination in cache key
+        # Check if this is an aggregation query
+        intent_type = intent.get('intent_type', 'query')
+        aggregation_function = intent.get('aggregation_function', '')
+        is_aggregation = (intent_type == 'count' or (intent_type == 'aggregate' and aggregation_function == 'count')) and intent.get('group_by')
+
+        # For aggregation queries, use cache key without pagination (aggregations are same for all pages)
+        # For regular queries, include pagination in cache key
+        cache_offset = 0 if is_aggregation else offset
+        cache_limit = 10000 if is_aggregation else limit
+
+        # Check cache first
         if self.use_cache and not bypass_cache:
-            cached_result = QueryCache.get(intent, user, offset, limit)
+            cached_result = QueryCache.get(intent, user, cache_offset, cache_limit)
             if cached_result is not None:
-                logger.info(f"Returning cached result for {intent.get('entity')} (offset={offset}, limit={limit})")
+                logger.info(f"Returning cached result for {intent.get('entity')} (aggregation={is_aggregation})")
                 return cached_result
 
         start_time = time.time()
@@ -57,8 +67,16 @@ class QueryExecutor:
         # Build queryset
         queryset = entity.get_queryset(filters)
 
-        # Smart estimation: fetch limit+1 to determine has_next
-        fetch_limit = limit + 1
+        # For aggregation queries, fetch ALL data to aggregate
+        # For regular queries, use pagination
+        if is_aggregation:
+            # Fetch all matching results for aggregation (limit to reasonable max)
+            fetch_limit = 10000  # Max safety limit
+            fetch_offset = 0
+        else:
+            # Smart estimation: fetch limit+1 to determine has_next
+            fetch_limit = limit + 1
+            fetch_offset = offset
 
         # Execute query - always convert to dicts for JSON serialization
         if hasattr(queryset, 'values') and callable(queryset.values):
@@ -72,8 +90,8 @@ class QueryExecutor:
             # Handle wildcard or empty attributes
             if not attributes or attributes == ['*']:
                 # No specific attributes - get all fields as dicts
-                # Apply offset and fetch_limit
-                results = list(queryset.values()[offset:offset + fetch_limit])
+                # Apply fetch_offset and fetch_limit
+                results = list(queryset.values()[fetch_offset:fetch_offset + fetch_limit])
             else:
                 # User requested specific attributes
                 # Filter out wildcards and map to database fields
@@ -81,12 +99,12 @@ class QueryExecutor:
                 mapped_attributes = [field_mapping.get(attr, attr) for attr in filtered_attrs]
 
                 if mapped_attributes:
-                    # Apply offset and fetch_limit
-                    results = list(queryset.values(*mapped_attributes)[offset:offset + fetch_limit])
+                    # Apply fetch_offset and fetch_limit
+                    results = list(queryset.values(*mapped_attributes)[fetch_offset:fetch_offset + fetch_limit])
                 else:
                     # All attributes were wildcards, get everything
-                    # Apply offset and fetch_limit
-                    results = list(queryset.values()[offset:offset + fetch_limit])
+                    # Apply fetch_offset and fetch_limit
+                    results = list(queryset.values()[fetch_offset:fetch_offset + fetch_limit])
 
             # Rename fields back to friendly names in results
             reverse_mapping = {v: k for k, v in field_mapping.items()}
@@ -95,25 +113,46 @@ class QueryExecutor:
                 for item in results
             ]
         elif hasattr(queryset, '__iter__'):
-            # Fallback for non-Django querysets
-            # Apply offset and fetch_limit
+            # Fallback for non-Django querysets (e.g., GitHub API, external APIs)
+            # Apply fetch_offset and fetch_limit
             if hasattr(queryset, '__getitem__'):
                 # Sliceable iterable
-                results = list(queryset[offset:offset + fetch_limit])
+                results = list(queryset[fetch_offset:fetch_offset + fetch_limit])
             else:
                 # Non-sliceable iterable - materialize and slice
                 all_results = list(queryset)
-                results = all_results[offset:offset + fetch_limit]
+                results = all_results[fetch_offset:fetch_offset + fetch_limit]
+
+            # Apply attribute filtering for non-Django querysets
+            attributes = intent.get('attributes', [])
+            if attributes and attributes != ['*'] and results:
+                # Filter each dict to only include requested attributes
+                filtered_results = []
+                for item in results:
+                    if isinstance(item, dict):
+                        filtered_item = {k: v for k, v in item.items() if k in attributes}
+                        filtered_results.append(filtered_item)
+                    else:
+                        # Not a dict - keep as-is
+                        filtered_results.append(item)
+                results = filtered_results
         else:
             results = []
 
-        # Determine pagination state
-        has_next = len(results) > limit
-        has_previous = offset > 0
+        # For aggregation queries, disable pagination of raw results
+        if is_aggregation:
+            # We fetched all data for aggregation
+            has_next = False
+            has_previous = False
+            # Don't trim results yet - need all for aggregation
+        else:
+            # Determine pagination state for regular queries
+            has_next = len(results) > limit
+            has_previous = offset > 0
 
-        # Trim to requested limit
-        if has_next:
-            results = results[:limit]
+            # Trim to requested limit
+            if has_next:
+                results = results[:limit]
 
         execution_time = time.time() - start_time
 
@@ -137,23 +176,49 @@ class QueryExecutor:
         }
 
         # Add aggregations based on intent_type
-        intent_type = intent.get('intent_type', 'query')
-
-        if intent_type == 'count':
+        if intent_type == 'count' or (intent_type == 'aggregate' and aggregation_function == 'count'):
             # For count queries, provide accurate count and optional grouping
+            # Also treat aggregate queries with aggregation_function='count' as count queries
             aggregations = self._calculate_count_aggregations(results, intent)
             response['aggregations'] = aggregations
-            # For count queries, limit raw results to reduce response size
-            response['results'] = results[:10]  # Show sample only
+
+            # For aggregation queries with group_by, the table should show aggregated groups
+            # For simple count queries without group_by, show sample of raw results
+            if intent.get('group_by') and aggregations.get('group_counts'):
+                # Convert group_counts to table format for display
+                group_counts = aggregations['group_counts']
+                grouped_by = aggregations['grouped_by']
+
+                # Transform to table rows
+                grouped_results = [
+                    {grouped_by.title(): name, 'Count': count}
+                    for name, count in group_counts.items()
+                ]
+
+                # For aggregated results, replace raw results with grouped results
+                response['results'] = grouped_results
+                response['count'] = len(grouped_results)
+
+                # Update pagination to reflect aggregated results (no pagination needed)
+                response['pagination'] = PaginationMetadata.build(
+                    offset=0,
+                    limit=len(grouped_results),
+                    has_next=False,
+                    has_previous=False,
+                    result_count=len(grouped_results)
+                )
+            else:
+                # For simple count queries, limit raw results to reduce response size
+                response['results'] = results[:10]  # Show sample only
 
         elif intent_type == 'aggregate':
             # For aggregate queries, calculate sum, avg, min, max
             aggregations = self._calculate_aggregations(results, intent)
             response['aggregations'] = aggregations
 
-        # Cache the result with pagination parameters
+        # Cache the result (use same cache key as GET)
         if self.use_cache and not bypass_cache:
-            QueryCache.set(intent, user, response, offset, limit)
+            QueryCache.set(intent, user, response, cache_offset, cache_limit)
 
         return response
 
@@ -176,14 +241,61 @@ class QueryExecutor:
         group_by_field = intent.get('group_by')
         if group_by_field and results:
             group_counts = {}
-            for item in results:
-                group_value = item.get(group_by_field)
-                if group_value is not None:
-                    group_key = str(group_value)
-                    group_counts[group_key] = group_counts.get(group_key, 0) + 1
 
-            aggregations['group_counts'] = group_counts
-            aggregations['grouped_by'] = group_by_field
+            # Handle multiple group-by fields (comma-separated)
+            if ',' in group_by_field:
+                group_fields = [f.strip() for f in group_by_field.split(',')]
+
+                # Map field names to actual result keys
+                actual_fields = []
+                for field in group_fields:
+                    if results and field not in results[0]:
+                        # Try with _name suffix (common for ForeignKeys)
+                        if f"{field}_name" in results[0]:
+                            actual_fields.append(f"{field}_name")
+                        # Try with _id suffix
+                        elif f"{field}_id" in results[0]:
+                            actual_fields.append(f"{field}_id")
+                        else:
+                            actual_fields.append(field)
+                    else:
+                        actual_fields.append(field)
+
+                # Create composite keys from ALL results
+                for item in results:
+                    values = []
+                    for field in actual_fields:
+                        value = item.get(field)
+                        if value is not None:
+                            values.append(str(value))
+
+                    if values:
+                        group_key = " - ".join(values)
+                        group_counts[group_key] = group_counts.get(group_key, 0) + 1
+
+                aggregations['group_counts'] = group_counts
+                aggregations['grouped_by'] = group_by_field
+            else:
+                # Single field grouping
+                # Try to find the actual field name in results
+                # (handle cases like group_by="author" but field is "author_name")
+                actual_field = group_by_field
+                if results and group_by_field not in results[0]:
+                    # Try with _name suffix (common for ForeignKeys)
+                    if f"{group_by_field}_name" in results[0]:
+                        actual_field = f"{group_by_field}_name"
+                    # Try with _id suffix
+                    elif f"{group_by_field}_id" in results[0]:
+                        actual_field = f"{group_by_field}_id"
+
+                for item in results:
+                    group_value = item.get(actual_field)
+                    if group_value is not None:
+                        group_key = str(group_value)
+                        group_counts[group_key] = group_counts.get(group_key, 0) + 1
+
+                aggregations['group_counts'] = group_counts
+                aggregations['grouped_by'] = group_by_field
 
         return aggregations
 
