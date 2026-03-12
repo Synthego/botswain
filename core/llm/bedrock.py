@@ -150,6 +150,29 @@ class BedrockProvider(LLMProvider):
 Available entities:
 {entities_desc}
 
+⚠️ CRITICAL: ATTRIBUTE FILTERING EXAMPLES ⚠️
+Learn from these examples - pay attention to what the user is asking for!
+
+Question: "urls for github issues about midscale"
+Analysis: User asks for "urls" - they want ONLY the url field, not all fields!
+Correct: {{"entity": "github_issue", "attributes": ["url"], "filters": {{"search": "midscale"}}}}
+WRONG: {{"entity": "github_issue", "attributes": ["*"], "filters": {{"search": "midscale"}}}} ❌
+
+Question: "show me github issues about midscale"
+Analysis: General "show me" - user wants to see all information
+Correct: {{"entity": "github_issue", "filters": {{"search": "midscale"}}}}
+
+Question: "just the issue numbers and titles"
+Analysis: "just" means specific fields only - number and title
+Correct: {{"entity": "github_issue", "attributes": ["number", "title"]}}
+WRONG: {{"entity": "github_issue", "attributes": ["*"]}} ❌
+
+Question: "give me the links to all open PRs"
+Analysis: "links" means url field only
+Correct: {{"entity": "github_issue", "attributes": ["url"], "filters": {{"state": "open", "type": "pr"}}}}
+
+NOW - apply this understanding to the actual question!
+
 VALID FILTERS BY ENTITY (use ONLY these - do NOT invent others):
 - synthesizer: status, available, barcode
 - instrument: status, factory, barcode, instrument_type, type
@@ -374,31 +397,52 @@ Intent Types - CRITICAL FOR ACCURATE RESULTS:
    - Example: "What's the average order value?"
    - Add "aggregation_function": "sum|avg|min|max" (optional, defaults to all)
 
-ATTRIBUTES - Selecting specific fields (CRITICAL):
+ATTRIBUTES - Selecting specific fields (CRITICAL - READ THIS CAREFULLY):
 
-By default, queries return ALL fields for an entity. Use "attributes" to select ONLY specific fields when user asks for them:
+⚠️ IMPORTANT: Pay close attention to what the user is asking for! ⚠️
 
-- If user asks for specific fields → List those exact fields: ["field1", "field2"]
-- If user asks for "urls", "links", "IDs only" → Extract specific field names: ["url"], ["id"]
-- If user asks general "show me X" → Use ["*"] or omit attributes (returns all fields)
+By default, queries return ALL fields. When user asks for SPECIFIC fields, you MUST use "attributes" to return ONLY those fields.
 
-Common attribute patterns:
-- "urls for github issues" → "attributes": ["url"]
-- "show me issue numbers and titles" → "attributes": ["number", "title"]
-- "list synthesizer IDs" → "attributes": ["id"]
-- "just the URLs" → "attributes": ["url"]
-- "show me all issues" → "attributes": ["*"] (or omit - returns all fields)
+**When to use attributes:**
+
+1. User asks for ONE specific field → Return ONLY that field
+   - "urls for github issues" → "attributes": ["url"]
+   - "just the URLs" → "attributes": ["url"]
+   - "give me the links" → "attributes": ["url"]
+   - "show me issue numbers" → "attributes": ["number"]
+   - "list IDs" → "attributes": ["id"]
+
+2. User asks for MULTIPLE specific fields → Return ONLY those fields
+   - "show me issue numbers and titles" → "attributes": ["number", "title"]
+   - "give me names and statuses" → "attributes": ["name", "status"]
+
+3. User asks general question ("show me issues", "list workflows") → Return all fields
+   - "show me all issues" → "attributes": ["*"] or omit
+   - "list github issues" → "attributes": ["*"] or omit
+
+**KEY WORDS THAT MEAN SPECIFIC FIELDS:**
+- "urls", "links", "just X", "only X", "give me X", "X for", "X field"
+- If user mentions a field name → they want ONLY that field!
+
+**WRONG**: "urls for github issues" → returning all fields
+**CORRECT**: "urls for github issues" → "attributes": ["url"]
+
+⚠️ BEFORE YOU WRITE THE JSON - CHECK THE QUESTION! ⚠️
+Does the user ask for specific fields (urls, numbers, IDs)? Then use "attributes": ["field_name"]!
+Does the user ask general question (show me X, list X)? Then omit "attributes" or use ["*"]!
 
 {{
   "entity": "entity_name",
   "intent_type": "query|count|aggregate",
-  "attributes": ["attr1", "attr2"],  // IMPORTANT: Use ["*"] or omit for all fields, or specify exact fields: ["url"], ["number", "title"]
+  "attributes": ["field1", "field2"],  // ⚠️ USE THIS when user asks for specific fields! Examples: ["url"], ["number", "title"], ["id"]
   "filters": {{"key": "value"}},
   "sort": {{"field": "name", "direction": "asc"}},
   "limit": 10,
   "aggregation_function": "sum|avg|min|max",  // Optional: for aggregate intent_type
   "group_by": "field_name"  // Optional: for count intent_type
 }}
+
+⚠️ REMEMBER: "urls for github issues" means attributes: ["url"] - NOT all fields! ⚠️
 
 CRITICAL: Only use filters listed above for the chosen entity. If question asks about something not in valid filters, return empty filters object.
 """
